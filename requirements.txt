@@ -52,3 +52,4 @@ virtualenv==20.19.0
 virtualenv-clone==0.5.7
 whitenoise==6.5.0
 dj-rest-auth
+django-browser-reload

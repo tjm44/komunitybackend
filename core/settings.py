@@ -36,7 +36,10 @@ env_hosts = os.environ.get('ALLOWED_HOSTS', '')
 if env_hosts:
     _prod_hosts.extend([h.strip() for h in env_hosts.split(',') if h.strip()])
 
-ALLOWED_HOSTS = _base_hosts + [h for h in _prod_hosts if h]
+if DEBUG:
+    ALLOWED_HOSTS = ['*']
+else:
+    ALLOWED_HOSTS = _base_hosts + [h for h in _prod_hosts if h]
 
 CSRF_TRUSTED_ORIGINS = [
     'https://chemaonline.azurewebsites.net',

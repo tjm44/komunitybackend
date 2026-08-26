@@ -120,7 +120,10 @@ class Profile(models.Model):
         """Check if profile has minimum required fields filled"""
         self.is_complete = bool(self.first_name and self.first_name.strip() and 
                                self.surname and self.surname.strip())
-        return self.is_complete
+    def save(self, *args, **kwargs):
+        if self.user and self.user.phone and not self.phone:
+            self.phone = self.user.phone
+        super().save(*args, **kwargs)
 
     class Meta:
         db_table = 'user_profile'
@@ -129,7 +132,10 @@ class Profile(models.Model):
 @receiver(post_save, sender=CustomUser)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        Profile.objects.create(user=instance)
+        Profile.objects.create(user=instance, phone=instance.phone)
+    elif hasattr(instance, 'profile') and instance.profile and instance.phone and instance.profile.phone != instance.phone:
+        instance.profile.phone = instance.phone
+        instance.profile.save(update_fields=['phone'])
 
 
 class EmailVerificationToken(models.Model):

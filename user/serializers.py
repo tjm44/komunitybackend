@@ -3,6 +3,7 @@ from .models import CustomUser, Profile
 
 class ProfileSerializer(serializers.ModelSerializer):
     active_role = serializers.SerializerMethodField()
+    phone = serializers.CharField(source='user.phone', read_only=True)
 
     class Meta:
         model = Profile
@@ -13,7 +14,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             'is_complete', 'is_deceased', 'is_active', 'date_of_death',
             'active_role', 'is_verified'
         ]
-        read_only_fields = ['user', 'full_name', 'is_complete', 'active_role', 'is_verified']
+        read_only_fields = ['user', 'full_name', 'phone', 'is_complete', 'active_role', 'is_verified']
+
+    def validate_email(self, value):
+        """Convert empty string to None so unique=True doesn't fire for blank emails."""
+        if not value or not value.strip():
+            return None
+        return value.strip()
 
     def get_active_role(self, obj):
         try:
@@ -29,7 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'phone', 'profile', 'date_joined', 'active_role']
+        fields = ['id', 'phone', 'email', 'profile', 'date_joined', 'active_role']
         read_only_fields = ['date_joined']
 
     def get_profile(self, obj):
