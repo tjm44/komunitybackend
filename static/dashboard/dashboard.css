@@ -1,27 +1,27 @@
 /* ============================================================
    Komunity Platform Admin Dashboard — Design System
-   Dark Glassmorphism · Inter Font · Violet + Cyan Accents
+   Modern Glassmorphism · Inter Font · Navy + Teal Accents
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /* ── CSS Variables ─────────────────────────────────────────── */
 :root {
-  --bg:          #474b57;
-  --bg-2:        #39414e;
-  --surface:     #1d2422;
-  --surface-2:   #2e3b38;
+  --bg:          #0f172a;
+  --bg-2:        #1e293b;
+  --surface:     #162032;
+  --surface-2:   #1e293b;
   --panel:       rgba(255, 255, 255, 0.04);
   --panel-hover: rgba(255, 255, 255, 0.07);
-  --border:      rgba(255, 255, 255, 0.08);
-  --border-2:    rgba(255, 255, 255, 0.12);
+  --border:      rgba(153, 221, 255, 0.12);
+  --border-2:    rgba(63, 210, 199, 0.25);
 
-  --accent:        #7c3aed;
-  --accent-light:  #a855f7;
-  --accent-glow:   rgba(124, 58, 237, 0.25);
-  --cyan:          #06b6d4;
-  --cyan-light:    #22d3ee;
-  --cyan-glow:     rgba(6, 182, 212, 0.2);
+  --accent:        #00458b;
+  --accent-light:  #005cb3;
+  --accent-glow:   rgba(0, 69, 139, 0.35);
+  --cyan:          #3fd2c7;
+  --cyan-light:    #99ddff;
+  --cyan-glow:     rgba(63, 210, 199, 0.25);
 
   --success:       #10b981;
   --success-bg:    rgba(16, 185, 129, 0.12);
@@ -29,8 +29,8 @@
   --warning-bg:    rgba(245, 158, 11, 0.12);
   --danger:        #ef4444;
   --danger-bg:     rgba(239, 68, 68, 0.12);
-  --info:          #3b82f6;
-  --info-bg:       rgba(59, 130, 246, 0.12);
+  --info:          #99ddff;
+  --info-bg:       rgba(153, 221, 255, 0.12);
 
   --text-primary:  #f1f5f9;
   --text-secondary:#94a3b8;
