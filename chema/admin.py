@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Group, Organisation, GroupMembership, Post, PostImage, Comment, Reply, Dependent,
-    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile
+    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile,
+    ContributionCycle, MemberCyclePayment
 )
 
 
@@ -81,6 +82,16 @@ class GroupAdmin(admin.ModelAdmin):
         }),
         ('Ownership', {
             'fields': ('creator', 'admin', 'admins')
+        }),
+        ('Recurring Contributions', {
+            'fields': (
+                'enable_recurring_contributions',
+                'recurring_amount',
+                'recurring_frequency',
+                'recurring_due_day',
+                'recurring_title',
+                'recurring_reminder_days',
+            )
         }),
         ('Settings', {
             'fields': ('max_members', 'requires_approval', 'verified_members_only')
@@ -219,5 +230,45 @@ class DependentAdmin(admin.ModelAdmin):
     list_filter = ('relationship', 'date_added', 'group')
     readonly_fields = ('date_added',)
     raw_id_fields = ('guardian', 'group')
+
+
+# ─────────────────────────────────────────────────────────────
+#  Recurring Contribution Cycles & Member Payments
+# ─────────────────────────────────────────────────────────────
+
+class MemberCyclePaymentInline(admin.TabularInline):
+    model = MemberCyclePayment
+    extra = 0
+    fields = ('member', 'amount_due', 'amount_paid', 'status', 'paid_at', 'payment_method')
+    readonly_fields = ('paid_at',)
+    raw_id_fields = ('member', 'transaction')
+
+
+@admin.register(ContributionCycle)
+class ContributionCycleAdmin(admin.ModelAdmin):
+    list_display = ('title', 'group', 'due_date', 'target_amount_per_member', 'status', 'total_collected_display', 'paid_progress')
+    list_filter = ('status', 'due_date', 'group')
+    search_fields = ('title', 'group__name')
+    readonly_fields = ('created_at', 'updated_at')
+    raw_id_fields = ('group',)
+    inlines = [MemberCyclePaymentInline]
+
+    def total_collected_display(self, obj):
+        return f"R {obj.get_total_collected():.2f} / R {obj.get_total_expected():.2f}"
+    total_collected_display.short_description = 'Collected / Expected'
+
+    def paid_progress(self, obj):
+        return f"{obj.get_paid_count()} / {obj.get_total_members_count()} ({obj.get_progress_percentage()}%)"
+    paid_progress.short_description = 'Members Paid'
+
+
+@admin.register(MemberCyclePayment)
+class MemberCyclePaymentAdmin(admin.ModelAdmin):
+    list_display = ('member', 'cycle', 'amount_due', 'amount_paid', 'status', 'paid_at', 'payment_method')
+    list_filter = ('status', 'payment_method', 'cycle__group')
+    search_fields = ('member__first_name', 'member__surname', 'cycle__title', 'cycle__group__name')
+    readonly_fields = ('created_at', 'updated_at')
+    raw_id_fields = ('cycle', 'member', 'transaction')
+
 
 

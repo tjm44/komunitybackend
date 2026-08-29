@@ -329,7 +329,7 @@ from django.utils import timezone
 from decimal import Decimal
 
 from django.db.models import Q
-from chema.models import Group, Post, Comment, GroupMembership, PostImage, Reply, Organisation
+from chema.models import Group, Post, Comment, GroupMembership, PostImage, Reply, Organisation, ContributionCycle, MemberCyclePayment
 from user.models import Profile
 from condolence.models import Contribution, Deceased
 from wallet.models import (
@@ -343,7 +343,7 @@ from wallet.models import (
 from chema.serializers import (
     GroupSerializer, PostSerializer, CommentSerializer, 
     GroupMembershipSerializer, PostImageSerializer, ReplySerializer,
-    OrganisationSerializer
+    OrganisationSerializer, ContributionCycleSerializer, MemberCyclePaymentSerializer
 )
 from user.serializers import ProfileSerializer, UserSerializer, SignupSerializer
 from condolence.serializers import ContributionSerializer, DeceasedSerializer
@@ -929,6 +929,319 @@ class GroupViewSet(viewsets.ModelViewSet):
         campaigns = FundCampaign.objects.filter(group=group).order_by('-created_at')
         serializer = FundCampaignSerializer(campaigns, many=True, context={'request': request})
         return Response(serializer.data)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # RECURRING CONTRIBUTION CYCLES, LEDGER & REMINDERS
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @action(detail=True, methods=['get'])
+    def recurring_cycles(self, request, pk=None):
+        """
+        List all past, current, and upcoming contribution cycles for this group,
+        complete with member payment matrix and summary statistics.
+        """
+        group = self.get_object()
+        if not group.enable_recurring_contributions:
+            return Response({
+                'enabled': False,
+                'cycles': [],
+                'summary': None
+            })
+
+        # Ensure active cycle exists for the current month
+        active_cycle = group.contribution_cycles.filter(status='active').first()
+        if not active_cycle and group.recurring_amount > 0:
+            active_cycle = group.ensure_active_cycle()
+
+        cycles = group.contribution_cycles.all().order_by('-due_date')
+        cycles_serializer = ContributionCycleSerializer(cycles, many=True, context={'request': request})
+
+        # Calculate group-level recurring stats
+        from django.db.models import Sum
+        all_payments = MemberCyclePayment.objects.filter(cycle__group=group)
+        total_collected_all_time = float(all_payments.filter(status='paid').aggregate(total=Sum('amount_paid'))['total'] or 0.00)
+        total_due_all_time = float(all_payments.aggregate(total=Sum('amount_due'))['total'] or 0.00)
+
+        # Days until next due date
+        days_until_due = None
+        if active_cycle and active_cycle.due_date:
+            today = timezone.now().date()
+            delta = (active_cycle.due_date - today).days
+            days_until_due = delta
+
+        # Current user's payment for active cycle
+        my_payment_data = None
+        if request.user.is_authenticated and active_cycle:
+            my_pay = active_cycle.payments.filter(member=request.user.profile).first()
+            if my_pay:
+                my_payment_data = MemberCyclePaymentSerializer(my_pay, context={'request': request}).data
+
+        return Response({
+            'enabled': True,
+            'recurring_amount': float(group.recurring_amount),
+            'recurring_frequency': group.recurring_frequency,
+            'recurring_due_day': group.recurring_due_day,
+            'recurring_title': group.recurring_title,
+            'recurring_reminder_days': group.recurring_reminder_days,
+            'active_cycle_id': active_cycle.id if active_cycle else None,
+            'days_until_due': days_until_due,
+            'my_active_payment': my_payment_data,
+            'summary': {
+                'total_collected_all_time': total_collected_all_time,
+                'total_due_all_time': total_due_all_time,
+                'total_cycles_count': cycles.count(),
+                'active_cycle_collected': active_cycle.get_total_collected() if active_cycle else 0.00,
+                'active_cycle_expected': active_cycle.get_total_expected() if active_cycle else 0.00,
+                'active_cycle_paid_count': active_cycle.get_paid_count() if active_cycle else 0,
+                'active_cycle_unpaid_count': active_cycle.get_unpaid_count() if active_cycle else 0,
+                'active_cycle_progress': active_cycle.get_progress_percentage() if active_cycle else 0,
+            },
+            'cycles': cycles_serializer.data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def generate_cycle(self, request, pk=None):
+        """
+        Admin endpoint to manually trigger/refresh a contribution cycle for a
+        specific month/year or next upcoming cycle.
+        """
+        group = self.get_object()
+        if not group.is_admin(request.user):
+            return Response({'error': 'Only group admins can generate contribution cycles.'}, status=status.HTTP_403_FORBIDDEN)
+
+        import calendar
+        from datetime import date
+        now = timezone.now()
+        month = int(request.data.get('month', now.month))
+        year = int(request.data.get('year', now.year))
+        target_amount = Decimal(str(request.data.get('target_amount', group.recurring_amount)))
+
+        max_days = calendar.monthrange(year, month)[1]
+        due_day = min(group.recurring_due_day or 25, max_days)
+        due_date_str = request.data.get('due_date')
+        if due_date_str:
+            from datetime import datetime
+            due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+        else:
+            due_date = date(year, month, due_day)
+
+        title = request.data.get('title')
+        if not title:
+            import calendar as cal
+            month_name = cal.month_name[month]
+            title = f"{month_name} {year} {group.recurring_title or 'Contribution'}"
+
+        cycle, created = ContributionCycle.objects.get_or_create(
+            group=group,
+            cycle_month=month,
+            cycle_year=year,
+            defaults={
+                'title': title,
+                'due_date': due_date,
+                'target_amount_per_member': target_amount,
+                'status': 'active',
+            }
+        )
+
+        if not created:
+            cycle.title = title
+            cycle.due_date = due_date
+            cycle.target_amount_per_member = target_amount
+            cycle.save()
+
+        cycle.populate_member_payments()
+        serializer = ContributionCycleSerializer(cycle, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def pay_cycle(self, request, pk=None):
+        """
+        Member pays their recurring contribution for a cycle using their wallet balance.
+        """
+        group = self.get_object()
+        profile = request.user.profile
+
+        if not group.is_member(request.user):
+            return Response({'error': 'You must be an active member of this group to make contributions.'}, status=status.HTTP_403_FORBIDDEN)
+
+        cycle_id = request.data.get('cycle_id')
+        if cycle_id:
+            cycle = get_object_or_404(ContributionCycle, id=cycle_id, group=group)
+        else:
+            cycle = group.contribution_cycles.filter(status='active').first()
+            if not cycle:
+                cycle = group.ensure_active_cycle()
+
+        if not cycle:
+            return Response({'error': 'No active contribution cycle found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create payment record
+        payment, _ = MemberCyclePayment.objects.get_or_create(
+            cycle=cycle,
+            member=profile,
+            defaults={'amount_due': cycle.target_amount_per_member, 'amount_paid': 0.00, 'status': 'pending'}
+        )
+
+        if payment.status == 'paid':
+            return Response({'error': 'You have already completed your contribution for this cycle.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount_to_pay = Decimal(str(request.data.get('amount', payment.amount_due or cycle.target_amount_per_member)))
+        if amount_to_pay <= 0:
+            return Response({'error': 'Contribution amount must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check wallet balance
+        wallet, _ = Wallet.objects.get_or_create(
+            user=request.user,
+            defaults={'external_wallet_id': f"WAAS_{request.user.id}"}
+        )
+
+        if wallet.get_balance() < amount_to_pay:
+            return Response({'error': 'Insufficient wallet balance to pay group dues.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            # Create wallet transaction
+            tx = Transaction.objects.create(
+                wallet=wallet,
+                transaction_type='TRANSFER',
+                amount=amount_to_pay,
+                status='COMPLETED',
+                destination_group=group,
+                note=f"Recurring contribution for {cycle.title}",
+                waas_reference_id=f"RECUR_{cycle.id}_{profile.id}_{int(timezone.now().timestamp())}"
+            )
+            # Mark payment as paid
+            payment.mark_as_paid(amount=amount_to_pay, transaction=tx, method='wallet')
+            wallet.recalculate_balance()
+
+        # Send notification to Group Admins
+        admin_users = set()
+        if group.creator:
+            admin_users.add(group.creator)
+        for adm in group.admins.all():
+            admin_users.add(adm)
+        for gm in group.groupmembership_set.filter(role='admin', status='active', is_active=True).select_related('member__user'):
+            if gm.member and gm.member.user:
+                admin_users.add(gm.member.user)
+
+        for adm_user in admin_users:
+            if adm_user != request.user:
+                send_push_notification(
+                    user=adm_user,
+                    title=f"Dues Paid in {group.name}",
+                    message=f"{profile.full_name} contributed R{amount_to_pay:.2f} for {cycle.title}.",
+                    notification_type="cycle_payment",
+                    data={'group_id': group.id, 'cycle_id': cycle.id}
+                )
+
+        return Response({
+            'status': 'success',
+            'message': f"Successfully paid R{amount_to_pay:.2f} for {cycle.title}!",
+            'payment': MemberCyclePaymentSerializer(payment, context={'request': request}).data,
+            'cycle': ContributionCycleSerializer(cycle, context={'request': request}).data,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def send_cycle_reminder(self, request, pk=None):
+        """
+        Admin endpoint to dispatch push and in-app reminder notifications to all
+        members who have not yet paid for the specified (or active) cycle.
+        """
+        group = self.get_object()
+        if not group.is_admin(request.user):
+            return Response({'error': 'Only group admins can send reminder notifications.'}, status=status.HTTP_403_FORBIDDEN)
+
+        cycle_id = request.data.get('cycle_id')
+        if cycle_id:
+            cycle = get_object_or_404(ContributionCycle, id=cycle_id, group=group)
+        else:
+            cycle = group.contribution_cycles.filter(status='active').first()
+
+        if not cycle:
+            return Response({'error': 'No active cycle found to send reminders for.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Make sure member payments are up to date
+        cycle.populate_member_payments()
+
+        unpaid_payments = cycle.payments.exclude(status__in=['paid', 'exempt']).select_related('member__user')
+        reminded_count = 0
+        now = timezone.now()
+
+        due_date_str = cycle.due_date.strftime('%d %B %Y') if cycle.due_date else 'soon'
+        amount_str = f"R{cycle.target_amount_per_member:.2f}"
+
+        for pay in unpaid_payments:
+            member_user = pay.member.user if pay.member else None
+            if member_user:
+                send_push_notification(
+                    user=member_user,
+                    title=f"Reminder: {group.name} Dues Due {due_date_str}",
+                    message=f"Hi {pay.member.full_name}, your contribution of {amount_str} for '{cycle.title}' is due on {due_date_str}. Tap to pay now with your wallet.",
+                    notification_type="cycle_reminder",
+                    data={'group_id': group.id, 'cycle_id': cycle.id, 'action': 'pay_dues'}
+                )
+                pay.reminder_sent_at = now
+                pay.save(update_fields=['reminder_sent_at'])
+                reminded_count += 1
+
+        return Response({
+            'status': 'success',
+            'reminded_count': reminded_count,
+            'message': f"Sent contribution reminders to {reminded_count} member(s) for {cycle.title}."
+        })
+
+    @action(detail=True, methods=['get'])
+    def recurring_ledger(self, request, pk=None):
+        """
+        Complete tabular ledger of all recurring contribution cycles and payments
+        for auditing and transparency.
+        """
+        group = self.get_object()
+        cycles = group.contribution_cycles.all().order_by('-due_date')
+        
+        cycle_id = request.query_params.get('cycle_id')
+        if cycle_id:
+            cycles = cycles.filter(id=cycle_id)
+
+        ledger_data = []
+        for cycle in cycles:
+            payments = cycle.payments.all().select_related('member', 'transaction')
+            payments_data = []
+            for p in payments:
+                payments_data.append({
+                    'id': p.id,
+                    'member_id': p.member.id if p.member else None,
+                    'member_name': p.member.full_name if p.member else 'Unknown',
+                    'member_phone': p.member.phone if p.member else '',
+                    'amount_due': float(p.amount_due),
+                    'amount_paid': float(p.amount_paid),
+                    'status': p.status,
+                    'paid_at': p.paid_at.isoformat() if p.paid_at else None,
+                    'payment_method': p.payment_method,
+                    'transaction_ref': p.transaction.waas_reference_id if p.transaction else None,
+                    'reminder_sent_at': p.reminder_sent_at.isoformat() if p.reminder_sent_at else None,
+                })
+
+            ledger_data.append({
+                'cycle_id': cycle.id,
+                'title': cycle.title,
+                'due_date': cycle.due_date.isoformat() if cycle.due_date else None,
+                'target_amount_per_member': float(cycle.target_amount_per_member),
+                'status': cycle.status,
+                'total_expected': cycle.get_total_expected(),
+                'total_collected': cycle.get_total_collected(),
+                'paid_count': cycle.get_paid_count(),
+                'unpaid_count': cycle.get_unpaid_count(),
+                'progress_percentage': cycle.get_progress_percentage(),
+                'payments': payments_data
+            })
+
+        return Response({
+            'group_id': group.id,
+            'group_name': group.name,
+            'ledger': ledger_data
+        })
+
 
 
 class OrganisationViewSet(viewsets.ModelViewSet):

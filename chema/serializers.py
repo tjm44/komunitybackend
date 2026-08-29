@@ -1,9 +1,72 @@
 from rest_framework import serializers
 from .models import (
     Group, GroupMembership, Post, PostImage, Comment, Reply, Dependent, Organisation,
-    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile, GroupExcessProfile
+    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile, GroupExcessProfile,
+    ContributionCycle, MemberCyclePayment
 )
 from user.serializers import ProfileSerializer
+
+class MemberCyclePaymentSerializer(serializers.ModelSerializer):
+    member_detail = ProfileSerializer(source='member', read_only=True)
+
+    class Meta:
+        model = MemberCyclePayment
+        fields = [
+            'id', 'cycle', 'member', 'member_detail',
+            'amount_due', 'amount_paid', 'status',
+            'paid_at', 'payment_method', 'reminder_sent_at',
+            'notes', 'created_at', 'updated_at'
+        ]
+
+
+class ContributionCycleSerializer(serializers.ModelSerializer):
+    total_expected = serializers.SerializerMethodField()
+    total_collected = serializers.SerializerMethodField()
+    paid_count = serializers.SerializerMethodField()
+    unpaid_count = serializers.SerializerMethodField()
+    total_members_count = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    payments = MemberCyclePaymentSerializer(many=True, read_only=True)
+    my_payment = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContributionCycle
+        fields = [
+            'id', 'group', 'title', 'due_date', 'target_amount_per_member',
+            'status', 'cycle_month', 'cycle_year', 'created_at', 'updated_at',
+            'total_expected', 'total_collected', 'paid_count', 'unpaid_count',
+            'total_members_count', 'progress_percentage', 'payments', 'my_payment'
+        ]
+
+    def get_total_expected(self, obj):
+        return obj.get_total_expected()
+
+    def get_total_collected(self, obj):
+        return obj.get_total_collected()
+
+    def get_paid_count(self, obj):
+        return obj.get_paid_count()
+
+    def get_unpaid_count(self, obj):
+        return obj.get_unpaid_count()
+
+    def get_total_members_count(self, obj):
+        return obj.get_total_members_count()
+
+    def get_progress_percentage(self, obj):
+        return obj.get_progress_percentage()
+
+    def get_my_payment(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                payment = obj.payments.filter(member=request.user.profile).first()
+                if payment:
+                    return MemberCyclePaymentSerializer(payment, context=self.context).data
+            except Exception:
+                return None
+        return None
+
 
 class GroupMembershipSerializer(serializers.ModelSerializer):
     member_detail = ProfileSerializer(source='member', read_only=True)
@@ -81,6 +144,8 @@ class GroupSerializer(serializers.ModelSerializer):
     is_selected = serializers.SerializerMethodField()
     unread_posts_count = serializers.SerializerMethodField()
     membership_status = serializers.SerializerMethodField()
+    active_cycle = serializers.SerializerMethodField()
+    my_cycle_status = serializers.SerializerMethodField()
 
     # Profile serializers
     bereavement_profile = GroupBereavementProfileSerializer(required=False, allow_null=True)
@@ -97,6 +162,10 @@ class GroupSerializer(serializers.ModelSerializer):
             'is_selected', 'unread_posts_count', 'membership_status',
             # Fund purpose fields
             'purpose', 'fund_description', 'verified_members_only',
+            # Recurring Contribution settings
+            'enable_recurring_contributions', 'recurring_amount', 'recurring_frequency',
+            'recurring_due_day', 'recurring_title', 'recurring_reminder_days',
+            'active_cycle', 'my_cycle_status',
             # Notification settings
             'notify_on_member_join', 'notify_on_member_promote', 
             'notify_on_wallet_transfer', 'notify_on_campaign_created',
@@ -153,6 +222,46 @@ class GroupSerializer(serializers.ModelSerializer):
                     return membership.status
             except Exception:
                 pass
+        return None
+
+    def get_active_cycle(self, obj):
+        if not obj.enable_recurring_contributions:
+            return None
+        cycle = obj.contribution_cycles.filter(status='active').first()
+        if not cycle and obj.recurring_amount > 0:
+            cycle = obj.ensure_active_cycle()
+        if cycle:
+            return {
+                'id': cycle.id,
+                'title': cycle.title,
+                'due_date': cycle.due_date.isoformat() if cycle.due_date else None,
+                'target_amount_per_member': float(cycle.target_amount_per_member),
+                'status': cycle.status,
+                'total_expected': cycle.get_total_expected(),
+                'total_collected': cycle.get_total_collected(),
+                'paid_count': cycle.get_paid_count(),
+                'unpaid_count': cycle.get_unpaid_count(),
+                'progress_percentage': cycle.get_progress_percentage(),
+            }
+        return None
+
+    def get_my_cycle_status(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated or not obj.enable_recurring_contributions:
+            return None
+        cycle = obj.contribution_cycles.filter(status='active').first()
+        if not cycle:
+            return None
+        payment = cycle.payments.filter(member=request.user.profile).first()
+        if payment:
+            return {
+                'id': payment.id,
+                'status': payment.status,
+                'amount_due': float(payment.amount_due),
+                'amount_paid': float(payment.amount_paid),
+                'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+                'payment_method': payment.payment_method,
+            }
         return None
 
     def create(self, validated_data):

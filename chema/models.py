@@ -66,6 +66,38 @@ class Group(models.Model):
         help_text="Only allow verified user profiles to join this group"
     )
 
+    # Recurring Contribution Configuration
+    enable_recurring_contributions = models.BooleanField(
+        default=False,
+        help_text="Whether this group collects recurring scheduled contributions"
+    )
+    recurring_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        help_text="Amount expected per member per cycle"
+    )
+    recurring_frequency = models.CharField(
+        max_length=20, default='monthly',
+        choices=[
+            ('monthly', 'Monthly'),
+            ('weekly', 'Weekly'),
+            ('biweekly', 'Bi-weekly'),
+            ('annual', 'Annual'),
+        ],
+        help_text="Cycle frequency for recurring dues"
+    )
+    recurring_due_day = models.PositiveSmallIntegerField(
+        default=25,
+        help_text="Day of the month dues are expected (1-31)"
+    )
+    recurring_title = models.CharField(
+        max_length=150, default='Monthly Contribution', blank=True,
+        help_text="Descriptive title for recurring cycles (e.g. Monthly Dues, Stokvel Pool)"
+    )
+    recurring_reminder_days = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Days prior to due date to send reminder notification"
+    )
+
     # Wallet Integration
     external_wallet_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
 
@@ -618,5 +650,192 @@ def ensure_group_profile(sender, instance, created, **kwargs):
         GroupStudentProfile.objects.get_or_create(group=instance)
     elif instance.purpose == 'sports':
         GroupSportsProfile.objects.get_or_create(group=instance)
+
+    # If recurring contributions enabled, ensure current cycle exists
+    if instance.enable_recurring_contributions and instance.recurring_amount > 0:
+        try:
+            instance.ensure_active_cycle()
+        except Exception as e:
+            print(f"Error ensuring active cycle on group save: {e}")
+
+
+# =============================================================================
+# RECURRING CONTRIBUTION CYCLES & MEMBER PAYMENT LEDGER
+# =============================================================================
+
+class ContributionCycle(models.Model):
+    CYCLE_STATUS_CHOICES = [
+        ('upcoming', 'Upcoming'),
+        ('active', 'Active (Open for Payment)'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name='contribution_cycles'
+    )
+    title = models.CharField(max_length=200)
+    due_date = models.DateField(help_text="Contribution deadline for this cycle")
+    target_amount_per_member = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        help_text="Fixed amount expected from each active member"
+    )
+    status = models.CharField(
+        max_length=20, choices=CYCLE_STATUS_CHOICES, default='active'
+    )
+    cycle_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    cycle_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-due_date', '-created_at']
+        unique_together = ('group', 'cycle_month', 'cycle_year')
+
+    def __str__(self):
+        return f"{self.group.name} – {self.title} (Due {self.due_date})"
+
+    def get_total_expected(self):
+        from django.db.models import Sum
+        return float(self.payments.aggregate(total=Sum('amount_due'))['total'] or 0.00)
+
+    def get_total_collected(self):
+        from django.db.models import Sum
+        return float(self.payments.filter(status='paid').aggregate(total=Sum('amount_paid'))['total'] or 0.00)
+
+    def get_paid_count(self):
+        return self.payments.filter(status='paid').count()
+
+    def get_unpaid_count(self):
+        return self.payments.exclude(status__in=['paid', 'exempt']).count()
+
+    def get_total_members_count(self):
+        return self.payments.count()
+
+    def get_progress_percentage(self):
+        expected = self.get_total_expected()
+        if expected <= 0:
+            return 0
+        collected = self.get_total_collected()
+        return min(100, round((collected / expected) * 100))
+
+    def populate_member_payments(self):
+        """
+        Populate MemberCyclePayment records for all active members in the group.
+        """
+        active_memberships = self.group.groupmembership_set.filter(
+            status='active', is_active=True
+        ).select_related('member')
+
+        for membership in active_memberships:
+            MemberCyclePayment.objects.get_or_create(
+                cycle=self,
+                member=membership.member,
+                defaults={
+                    'amount_due': self.target_amount_per_member,
+                    'amount_paid': 0.00,
+                    'status': 'pending',
+                }
+            )
+
+
+class MemberCyclePayment(models.Model):
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending Payment'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('exempt', 'Exempt / Waived'),
+    ]
+
+    PAYMENT_METHOD_CHOICES = [
+        ('wallet', 'Wallet Balance'),
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('mobile_money', 'Mobile Money'),
+        ('other', 'Other'),
+    ]
+
+    cycle = models.ForeignKey(
+        ContributionCycle, on_delete=models.CASCADE, related_name='payments'
+    )
+    member = models.ForeignKey(
+        Profile, on_delete=models.CASCADE, related_name='cycle_payments'
+    )
+    amount_due = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(
+        max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending'
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    transaction = models.ForeignKey(
+        'wallet.Transaction', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cycle_payment'
+    )
+    payment_method = models.CharField(
+        max_length=50, choices=PAYMENT_METHOD_CHOICES, default='wallet'
+    )
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['status', 'member__first_name', 'member__surname']
+        unique_together = ('cycle', 'member')
+
+    def __str__(self):
+        return f"{self.member.full_name} -> {self.cycle.title}: {self.status.upper()} (R{self.amount_paid}/R{self.amount_due})"
+
+    def mark_as_paid(self, amount, transaction=None, method='wallet'):
+        self.amount_paid = amount
+        self.status = 'paid'
+        self.paid_at = timezone.now()
+        self.payment_method = method
+        if transaction:
+            self.transaction = transaction
+        self.save()
+
+
+def ensure_group_active_cycle(self):
+    """
+    Helper method attached to Group to ensure an active ContributionCycle exists
+    for the current month if recurring contributions are enabled.
+    """
+    if not self.enable_recurring_contributions or self.recurring_amount <= 0:
+        return None
+
+    now = timezone.now()
+    month = now.month
+    year = now.year
+
+    # Calculate due date for current month
+    import calendar
+    from datetime import date
+    max_days = calendar.monthrange(year, month)[1]
+    due_day = min(self.recurring_due_day or 25, max_days)
+    due_date = date(year, month, due_day)
+
+    month_name = now.strftime('%B')
+    title = f"{month_name} {year} {self.recurring_title or 'Contribution'}"
+
+    cycle, created = ContributionCycle.objects.get_or_create(
+        group=self,
+        cycle_month=month,
+        cycle_year=year,
+        defaults={
+            'title': title,
+            'due_date': due_date,
+            'target_amount_per_member': self.recurring_amount,
+            'status': 'active',
+        }
+    )
+
+    cycle.populate_member_payments()
+    return cycle
+
+
+# Attach method to Group class
+Group.ensure_active_cycle = ensure_group_active_cycle
+
 
 
