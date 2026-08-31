@@ -161,6 +161,10 @@ class Group(models.Model):
             return False
         if user.is_superuser:
             return True
+        if self.creator_id and user.id == self.creator_id:
+            return True
+        if self.admins.filter(id=user.id).exists():
+            return True
         try:
             profile = user.profile
         except Exception:

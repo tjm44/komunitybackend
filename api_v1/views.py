@@ -941,7 +941,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         complete with member payment matrix and summary statistics.
         """
         group = self.get_object()
-        if not group.enable_recurring_contributions:
+        if not group.enable_recurring_contributions or not group.is_active:
             return Response({
                 'enabled': False,
                 'cycles': [],
@@ -2839,6 +2839,10 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
         campaign = self.get_object()
         if not campaign.contributions_open:
             return Response({'error': 'This campaign is no longer accepting contributions.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if campaign.group and not campaign.is_public:
+            if not campaign.group.is_member(request.user):
+                return Response({'error': 'You must be an active member of this community to contribute to this campaign.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             from decimal import Decimal
