@@ -19,7 +19,12 @@ import json
 
 # ── Model imports ────────────────────────────────────────────────────────────
 from user.models import CustomUser, Profile, Notification, DeviceToken, PhoneOTP
-from chema.models import Group, GroupMembership
+from chema.models import (
+    Group, GroupMembership, Organisation,
+    ContributionCycle, MemberCyclePayment,
+    GroupBereavementProfile, GroupExcessProfile, GroupChurchProfile,
+    GroupStokvelProfile, GroupStudentProfile
+)
 from condolence.models import Deceased, Contribution, FundCampaign, CampaignContribution
 from wallet.models import (
     Wallet, Transaction, GroupWalletTransferRequest,
@@ -146,11 +151,33 @@ class DashboardHomeView(View):
             .order_by('-total')
         )
 
+        # Organisations & Recurring Cycles
+        total_organisations = Organisation.objects.filter(is_active=True).count()
+        total_cycles = ContributionCycle.objects.count()
+        recurring_collected_total = MemberCyclePayment.objects.filter(
+            status='paid'
+        ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+
+        # Group Purpose Distribution
+        purpose_distribution = (
+            Group.objects.filter(is_active=True)
+            .values('purpose')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+        purpose_map = dict(Group.GROUP_PURPOSE_CHOICES)
+        for p in purpose_distribution:
+            p['label'] = purpose_map.get(p['purpose'], p['purpose'].title())
+
         context = {
             'page': 'home',
             'total_users': total_users,
             'new_users_30d': new_users_30d,
             'total_groups': total_groups,
+            'total_organisations': total_organisations,
+            'total_cycles': total_cycles,
+            'recurring_collected_total': recurring_collected_total,
+            'purpose_distribution': purpose_distribution,
             'total_transactions_30d': total_transactions_30d,
             'total_volume_30d': total_volume_30d,
             'revenue_30d': revenue_30d,
@@ -411,6 +438,21 @@ class GroupDetailView(View):
         # Subscription
         subscription = GroupSubscription.objects.filter(group=group).first()
 
+        # Recurring Contribution Cycles & Payments
+        contribution_cycles = list(
+            group.contribution_cycles
+            .prefetch_related('payments', 'payments__member')
+            .order_by('-cycle_year', '-cycle_month')[:12]
+        )
+        for cycle in contribution_cycles:
+            cycle.total_expected_val = cycle.get_total_expected()
+            cycle.total_collected_val = cycle.get_total_collected()
+            cycle.paid_count_val = cycle.get_paid_count()
+            cycle.unpaid_count_val = cycle.get_unpaid_count()
+            cycle.progress_val = cycle.get_progress_percentage()
+
+        active_cycle = group.contribution_cycles.filter(status='active').first()
+
         context = {
             'page': 'groups',
             'group': group,
@@ -421,8 +463,25 @@ class GroupDetailView(View):
             'campaigns': campaigns,
             'sms_balance': sms_balance,
             'subscription': subscription,
+            'contribution_cycles': contribution_cycles,
+            'active_cycle': active_cycle,
         }
         return render(request, self.template_name, context)
+
+    def post(self, request, pk):
+        group = get_object_or_404(Group, pk=pk)
+        action = request.POST.get('action')
+        if action == 'toggle_active':
+            group.is_active = not group.is_active
+            group.save()
+            messages.success(request, f'Group status updated.')
+        elif action == 'trigger_cycle':
+            cycle = group.ensure_active_cycle()
+            if cycle:
+                messages.success(request, f'Active contribution cycle generated: "{cycle.title}".')
+            else:
+                messages.warning(request, 'Recurring contributions not enabled or recurring amount is 0.')
+        return redirect('dashboard:group_detail', pk=pk)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -858,6 +917,132 @@ class VendorsView(View):
                 messages.error(request, 'All policy fields are required.')
 
         return redirect('dashboard:vendors')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. ORGANISATIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+class OrganisationsListView(View):
+    template_name = 'dashboard/organisations.html'
+    PAGE_SIZE = 25
+
+    def get(self, request):
+        q = request.GET.get('q', '').strip()
+        entity_type_filter = request.GET.get('entity_type', '')
+        verified_filter = request.GET.get('is_verified', '')
+        page = max(int(request.GET.get('page', 1)), 1)
+
+        qs = Organisation.objects.select_related('creator').order_by('-date')
+
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q) | Q(registration_number__icontains=q) | Q(email__icontains=q))
+        if entity_type_filter:
+            qs = qs.filter(entity_type=entity_type_filter)
+        if verified_filter == '1':
+            qs = qs.filter(is_verified=True)
+        elif verified_filter == '0':
+            qs = qs.filter(is_verified=False)
+
+        total = qs.count()
+        offset = (page - 1) * self.PAGE_SIZE
+        organisations = qs[offset: offset + self.PAGE_SIZE]
+        total_pages = max((total + self.PAGE_SIZE - 1) // self.PAGE_SIZE, 1)
+
+        for org in organisations:
+            try:
+                org.wallet_balance = org.get_balance()
+            except Exception:
+                org.wallet_balance = Decimal('0')
+
+        entity_type_choices = Organisation.ENTITY_TYPE_CHOICES
+
+        context = {
+            'page': 'organisations',
+            'organisations': organisations,
+            'q': q,
+            'entity_type_filter': entity_type_filter,
+            'verified_filter': verified_filter,
+            'entity_type_choices': entity_type_choices,
+            'current_page': page,
+            'total_pages': total_pages,
+            'total': total,
+            'page_range': range(max(1, page - 2), min(total_pages + 1, page + 3)),
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        action = request.POST.get('action')
+        org_id = request.POST.get('org_id')
+        org = get_object_or_404(Organisation, pk=org_id)
+        if action == 'deactivate':
+            org.is_active = False
+            org.save()
+            messages.success(request, f'Organisation "{org.name}" deactivated.')
+        elif action == 'activate':
+            org.is_active = True
+            org.save()
+            messages.success(request, f'Organisation "{org.name}" activated.')
+        elif action == 'verify':
+            org.is_verified = True
+            org.save()
+            messages.success(request, f'Organisation "{org.name}" verified.')
+        elif action == 'unverify':
+            org.is_verified = False
+            org.save()
+            messages.success(request, f'Organisation "{org.name}" unverified.')
+        return redirect(request.META.get('HTTP_REFERER', '/dashboard/organisations/'))
+
+
+@staff_required
+class OrganisationDetailView(View):
+    template_name = 'dashboard/organisation_detail.html'
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, pk=pk)
+
+        # Balance
+        try:
+            wallet_balance = org.get_balance()
+        except Exception:
+            wallet_balance = Decimal('0')
+
+        # Affiliated Campaigns
+        campaigns = FundCampaign.objects.filter(organisation=org).order_by('-created_at')
+
+        # Recent Transactions touching this organisation
+        recent_transactions = Transaction.objects.filter(
+            destination_organisation=org
+        ).order_by('-timestamp')[:15]
+
+        # Admins
+        admins_list = list(org.admins.all())
+        if org.creator and org.creator not in admins_list:
+            admins_list.insert(0, org.creator)
+
+        context = {
+            'page': 'organisations',
+            'org': org,
+            'wallet_balance': wallet_balance,
+            'campaigns': campaigns,
+            'recent_transactions': recent_transactions,
+            'admins_list': admins_list,
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request, pk):
+        org = get_object_or_404(Organisation, pk=pk)
+        action = request.POST.get('action')
+        if action == 'toggle_verify':
+            org.is_verified = not org.is_verified
+            org.save()
+            messages.success(request, f'Organisation verification updated.')
+        elif action == 'toggle_active':
+            org.is_active = not org.is_active
+            org.save()
+            messages.success(request, f'Organisation status updated.')
+        return redirect('dashboard:organisation_detail', pk=pk)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

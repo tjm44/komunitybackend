@@ -47,9 +47,10 @@
 </div>
 
 <!-- ── Info + Subscription ──────────────────────────────── -->
+<!-- ── Info + Subscription + Recurring Setup ────────────── -->
 <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;" class="mb-3">
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">ℹ️ Group Info</span></div>
+    <div class="panel-header"><span class="panel-title">ℹ️ Group Governance &amp; Configuration</span></div>
     <div class="panel-body">
       <table class="dash-table">
         <tbody>
@@ -59,10 +60,21 @@
           </td></tr>
           <tr><td class="text-muted">Purpose</td><td><span class="badge badge-accent">{{ group.get_purpose_display }}</span></td></tr>
           <tr><td class="text-muted">Max Members</td><td>{{ group.max_members|default:"Unlimited" }}</td></tr>
-          <tr><td class="text-muted">Requires Approval</td><td>{% if group.requires_approval %}Yes{% else %}No{% endif %}</td></tr>
-          <tr><td class="text-muted">Min Approvals</td><td>{{ group.min_disbursement_approvals }}</td></tr>
-          <tr><td class="text-muted">Verified Members Only</td><td>{% if group.verified_members_only %}Yes{% else %}No{% endif %}</td></tr>
+          <tr><td class="text-muted">Requires Approval</td><td>{% if group.requires_approval %}<span class="badge badge-warning">Yes</span>{% else %}<span class="badge badge-muted">No</span>{% endif %}</td></tr>
+          <tr><td class="text-muted">Disbursement Multi-Sig Threshold</td><td><span class="badge badge-cyan">{{ group.min_disbursement_approvals }} Admin Approval(s) Required</span></td></tr>
+          <tr><td class="text-muted">Verified KYC Members Only</td><td>{% if group.verified_members_only %}<span class="badge badge-success">Yes (KYC Required)</span>{% else %}<span class="badge badge-muted">No</span>{% endif %}</td></tr>
           <tr><td class="text-muted">Wallet ID</td><td class="mono text-small">{{ group.external_wallet_id|default:"—" }}</td></tr>
+          <tr>
+            <td class="text-muted">Governance Notifications</td>
+            <td>
+              <div class="d-flex gap-1" style="flex-wrap:wrap;">
+                {% if group.notify_on_member_join %}<span class="badge badge-muted text-xs">Join Alert</span>{% endif %}
+                {% if group.notify_on_member_promote %}<span class="badge badge-muted text-xs">Admin Promote</span>{% endif %}
+                {% if group.notify_on_wallet_transfer %}<span class="badge badge-muted text-xs">Transfer Alert</span>{% endif %}
+                {% if group.notify_on_campaign_created %}<span class="badge badge-muted text-xs">Campaign Alert</span>{% endif %}
+              </div>
+            </td>
+          </tr>
         </tbody>
       </table>
 
@@ -77,6 +89,17 @@
             <tr><td class="text-muted">Contribution Model</td><td>{{ group.bereavement_profile.get_contribution_schedule_display }}</td></tr>
             <tr><td class="text-muted">Fixed Contribution</td><td>R {{ group.bereavement_profile.fixed_contribution_amount }}</td></tr>
             <tr><td class="text-muted">Fixed Claim Payout</td><td>R {{ group.bereavement_profile.fixed_claim_payout }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      {% elif group.purpose == 'excess' and group.excess_profile %}
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
+        <h4 style="font-size:14px;color:#38bdf8;margin-bottom:8px;">🚗 Insurance Excess Profile</h4>
+        <table class="dash-table text-small">
+          <tbody>
+            <tr><td class="text-muted">Max Excess Claim Payout</td><td class="bold text-success">R {{ group.excess_profile.max_excess_payout }}</td></tr>
+            <tr><td class="text-muted">Require VIN Verification</td><td>{% if group.excess_profile.require_vin_verification %}<span class="badge badge-success">Required</span>{% else %}<span class="badge badge-muted">Optional</span>{% endif %}</td></tr>
+            <tr><td class="text-muted">Require Insurance Policy Proof</td><td>{% if group.excess_profile.require_policy_proof %}<span class="badge badge-success">Required</span>{% else %}<span class="badge badge-muted">Optional</span>{% endif %}</td></tr>
           </tbody>
         </table>
       </div>
@@ -120,53 +143,137 @@
           </tbody>
         </table>
       </div>
-      {% elif group.purpose == 'sports' and group.sports_profile %}
-      <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
-        <h4 style="font-size:14px;color:#34d399;margin-bottom:8px;">⚽ Sports Club Profile</h4>
-        <table class="dash-table text-small">
-          <tbody>
-            <tr><td class="text-muted">Sport Category</td><td>{{ group.sports_profile.get_sport_category_display }}</td></tr>
-            <tr><td class="text-muted">Club Level</td><td>{{ group.sports_profile.get_club_level_display }}</td></tr>
-            <tr><td class="text-muted">Membership Fee</td><td>R {{ group.sports_profile.membership_fee }} ({{ group.sports_profile.get_dues_frequency_display }})</td></tr>
-            <tr><td class="text-muted">Match Fee</td><td>R {{ group.sports_profile.match_fee_per_game }} / game</td></tr>
-            <tr><td class="text-muted">Kit & Equipment Fund</td><td>{% if group.sports_profile.kit_equipment_fund_enabled %}Enabled{% else %}Disabled{% endif %}</td></tr>
-          </tbody>
-        </table>
-      </div>
       {% endif %}
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header"><span class="panel-title">🎫 Subscription</span></div>
-    <div class="panel-body">
-      {% if subscription %}
-        <div class="kpi-card {% if subscription.tier == 'PRO' %}accent{% elif subscription.tier == 'ENTERPRISE' %}cyan{% else %}muted{% endif %}" style="margin-bottom:14px;">
-          <div class="kpi-label">Tier</div>
-          <div class="kpi-value" style="font-size:20px;">{{ subscription.get_tier_display }}</div>
-          <div class="kpi-sub">R {{ subscription.monthly_price|floatformat:2 }}/month</div>
-        </div>
-        <p class="text-small text-muted">
-          {% if subscription.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}
-          {% if subscription.expires_at %}· Expires {{ subscription.expires_at|date:"M d, Y" }}{% endif %}
-        </p>
-      {% else %}
-        <div class="empty-state">
-          <div class="empty-state-icon">🆓</div>
-          <div class="empty-state-title">Free Tier</div>
-          <div class="empty-state-desc">No subscription</div>
-        </div>
-      {% endif %}
+  <div class="d-flex flex-column gap-3">
+    <!-- Recurring Contributions Card -->
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🔄 Recurring Group Pool</span></div>
+      <div class="panel-body">
+        {% if group.enable_recurring_contributions %}
+          <div class="kpi-card success" style="margin-bottom:12px;">
+            <div class="kpi-label">Recurring Target</div>
+            <div class="kpi-value money">{{ group.recurring_amount|floatformat:2 }}</div>
+            <div class="kpi-sub">{{ group.get_recurring_frequency_display }} · Due Day {{ group.recurring_due_day }}</div>
+          </div>
+          <table class="dash-table text-small">
+            <tbody>
+              <tr><td class="text-muted">Pool Title</td><td class="bold">{{ group.recurring_title|default:"Monthly Contribution" }}</td></tr>
+              <tr><td class="text-muted">Reminder Notice</td><td>{{ group.recurring_reminder_days }} days prior</td></tr>
+              <tr><td class="text-muted">Active Cycle</td><td>{% if active_cycle %}<span class="badge badge-success">{{ active_cycle.title }}</span>{% else %}<span class="badge badge-warning">No Active Cycle</span>{% endif %}</td></tr>
+            </tbody>
+          </table>
+          <form method="post" class="mt-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="trigger_cycle">
+            <button type="submit" class="btn btn-secondary btn-xs" style="width:100%;">⚡ Ensure / Generate Current Cycle</button>
+          </form>
+        {% else %}
+          <div class="empty-state" style="padding:16px 8px;">
+            <div class="empty-state-icon">⏸️</div>
+            <div class="empty-state-title" style="font-size:13px;">Recurring Pool Disabled</div>
+            <div class="empty-state-desc" style="font-size:11px;">Group operates on one-off fundraisers</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Subscription Card -->
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🎫 Subscription</span></div>
+      <div class="panel-body">
+        {% if subscription %}
+          <div class="kpi-card {% if subscription.tier == 'PRO' %}accent{% elif subscription.tier == 'ENTERPRISE' %}cyan{% else %}muted{% endif %}" style="margin-bottom:14px;">
+            <div class="kpi-label">Tier</div>
+            <div class="kpi-value" style="font-size:20px;">{{ subscription.get_tier_display }}</div>
+            <div class="kpi-sub">R {{ subscription.monthly_price|floatformat:2 }}/month</div>
+          </div>
+          <p class="text-small text-muted">
+            {% if subscription.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}
+            {% if subscription.expires_at %}· Expires {{ subscription.expires_at|date:"M d, Y" }}{% endif %}
+          </p>
+        {% else %}
+          <div class="empty-state" style="padding:16px 8px;">
+            <div class="empty-state-icon">🆓</div>
+            <div class="empty-state-title" style="font-size:13px;">Free Tier</div>
+            <div class="empty-state-desc" style="font-size:11px;">No active SaaS subscription</div>
+          </div>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ── Members ──────────────────────────────────────────── -->
+<!-- ── Contribution Cycles & Ledger ─────────────────────── -->
+{% if contribution_cycles %}
 <div class="panel mb-3">
-  <div class="panel-header"><span class="panel-title">👥 Members ({{ memberships|length }})</span></div>
+  <div class="panel-header">
+    <span class="panel-title">🗓️ Contribution Cycles &amp; Dues Ledger ({{ contribution_cycles|length }})</span>
+  </div>
   <div class="table-wrap">
     <table class="dash-table">
-      <thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Cycle</th>
+          <th>Due Date</th>
+          <th>Target / Member</th>
+          <th>Total Expected</th>
+          <th>Total Collected</th>
+          <th>Paid Members</th>
+          <th>Progress</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contribution_cycles %}
+        <tr>
+          <td class="bold">{{ c.title }}</td>
+          <td class="text-small text-muted">{{ c.due_date|date:"M d, Y" }}</td>
+          <td class="money">R {{ c.target_amount_per_member|floatformat:2 }}</td>
+          <td class="money">R {{ c.total_expected_val|floatformat:2 }}</td>
+          <td class="money text-success">R {{ c.total_collected_val|floatformat:2 }}</td>
+          <td>
+            <span class="badge badge-success">{{ c.paid_count_val }} Paid</span>
+            <span class="badge badge-muted">{{ c.unpaid_count_val }} Unpaid</span>
+          </td>
+          <td style="min-width:120px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;">
+                <div style="width:{{ c.progress_val }}%;height:100%;background:var(--success);border-radius:4px;"></div>
+              </div>
+              <span class="text-small text-muted">{{ c.progress_val }}%</span>
+            </div>
+          </td>
+          <td>
+            {% if c.status == 'active' %}<span class="badge badge-success">Active</span>
+            {% elif c.status == 'completed' %}<span class="badge badge-cyan">Completed</span>
+            {% else %}<span class="badge badge-muted">{{ c.status|title }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Members ──────────────────────────────────────────── -->
+<div class="panel mb-3">
+  <div class="panel-header"><span class="panel-title">👥 Group Members ({{ memberships|length }})</span></div>
+  <div class="table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th>Role</th>
+          <th>Status</th>
+          {% if group.purpose == 'bereavement' %}<th>Beneficiary Info</th>{% endif %}
+          {% if group.purpose == 'excess' %}<th>Vehicle &amp; Policy</th>{% endif %}
+          <th>Joined</th>
+        </tr>
+      </thead>
       <tbody>
         {% for m in memberships %}
         <tr>
@@ -174,17 +281,42 @@
             <div class="user-cell">
               <div class="user-avatar-sm">{{ m.member.first_name|default:m.member.surname|default:"M"|slice:":1"|upper }}</div>
               <div>
-                <div class="user-cell-name">{{ m.member.full_name }}</div>
+                <div class="user-cell-name">
+                  <a href="{% url 'dashboard:user_detail' m.member.user.pk %}" class="bold">
+                    {{ m.member.full_name }}
+                  </a>
+                  {% if m.member.is_verified %}<span class="badge badge-success" style="font-size:10px;padding:1px 4px;margin-left:4px;">✓ KYC</span>{% endif %}
+                </div>
                 <div class="user-cell-sub">{{ m.member.user.phone }}</div>
               </div>
             </div>
           </td>
           <td>{% if m.is_admin %}<span class="badge badge-accent">Admin</span>{% else %}<span class="badge badge-muted">Member</span>{% endif %}</td>
           <td>{% if m.status == 'active' %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-warning">{{ m.status|title }}</span>{% endif %}</td>
+          {% if group.purpose == 'bereavement' %}
+            <td class="text-small">
+              {% if m.beneficiary_name %}
+                <strong>{{ m.beneficiary_name }}</strong> ({{ m.beneficiary_relationship|default:"Primary" }})<br>
+                <span class="text-muted mono">{{ m.beneficiary_phone|default:"" }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          {% endif %}
+          {% if group.purpose == 'excess' %}
+            <td class="text-small">
+              {% if m.vehicle_make_model %}
+                <strong>{{ m.vehicle_make_model }}</strong> ({{ m.vehicle_registration|default:"No reg" }})<br>
+                <span class="text-muted">Policy: {{ m.policy_number|default:"—" }} · VIN: {{ m.vin_number|default:"—" }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          {% endif %}
           <td class="text-small text-muted">{{ m.date_joined|date:"M d, Y"|default:"—" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="4"><div class="empty-state"><div class="empty-state-title">No members</div></div></td></tr>
+        <tr><td colspan="6"><div class="empty-state"><div class="empty-state-title">No members</div></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

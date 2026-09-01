@@ -46,6 +46,20 @@
     <div class="kpi-icon">🏘️</div>
   </div>
 
+  <div class="kpi-card" style="background:linear-gradient(135deg,rgba(124,58,237,0.15),rgba(63,210,199,0.15));border-color:var(--border-2);">
+    <div class="kpi-label">Organisations</div>
+    <div class="kpi-value">{{ total_organisations }}</div>
+    <div class="kpi-sub">Churches, NGOs &amp; Bodies</div>
+    <div class="kpi-icon">🏛️</div>
+  </div>
+
+  <div class="kpi-card success">
+    <div class="kpi-label">Recurring Pools</div>
+    <div class="kpi-value">{{ total_cycles }} <span style="font-size:14px;font-weight:500;">Cycles</span></div>
+    <div class="kpi-sub">R {{ recurring_collected_total|floatformat:2 }} collected</div>
+    <div class="kpi-icon">🔄</div>
+  </div>
+
   <div class="kpi-card info">
     <div class="kpi-label">Transactions (30d)</div>
     <div class="kpi-value">{{ total_transactions_30d }}</div>
@@ -112,16 +126,47 @@
   </div>
 </div>
 
-<!-- ── Transaction Volume Chart + TX Type Breakdown ─────── -->
+<!-- ── Group Purposes & Transaction Mix ───────────────────── -->
 <div class="charts-grid mb-3">
   <div class="panel">
     <div class="panel-header">
-      <span class="panel-title">📊 Transaction Volume — Last 30 Days</span>
+      <span class="panel-title">🏘️ Group Purposes Distribution</span>
+      <a href="{% url 'dashboard:groups' %}" class="panel-action">View all groups →</a>
     </div>
     <div class="panel-body">
-      <div class="chart-container">
-        <canvas id="txVolumeChart"></canvas>
-      </div>
+      {% if purpose_distribution %}
+        <div class="table-wrap">
+          <table class="dash-table">
+            <thead>
+              <tr>
+                <th>Purpose</th>
+                <th>Groups</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in purpose_distribution %}
+              <tr>
+                <td>
+                  <span class="badge badge-accent">{{ p.label }}</span>
+                </td>
+                <td class="bold">{{ p.count }}</td>
+                <td>
+                  {% if total_groups > 0 %}
+                    {{ p.count|floatformat:0 }} ({{ p.count|stringformat:"d" }})
+                  {% else %}0%{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon">🏘️</div>
+          <div class="empty-state-title">No groups registered</div>
+        </div>
+      {% endif %}
     </div>
   </div>
 
@@ -157,6 +202,18 @@
           <div class="empty-state-title">No transactions yet</div>
         </div>
       {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Transaction Volume Chart ─────────────────────────── -->
+<div class="panel mb-3">
+  <div class="panel-header">
+    <span class="panel-title">📊 Transaction Volume Activity — Last 30 Days</span>
+  </div>
+  <div class="panel-body">
+    <div class="chart-container" style="height:220px;">
+      <canvas id="txVolumeChart"></canvas>
     </div>
   </div>
 </div>

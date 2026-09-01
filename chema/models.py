@@ -18,7 +18,6 @@ class Group(models.Model):
         ('church', 'Church / Religious Group'),
         ('stokvel', 'Stokvel & Rotating Savings'),
         ('student', 'Student Body & Society'),
-        ('sports', 'Sports Club & Team'),
     ]
 
     name = models.CharField(max_length=100)
@@ -582,48 +581,6 @@ class GroupStudentProfile(models.Model):
         return f"Student Profile - {self.group.name}"
 
 
-class GroupSportsProfile(models.Model):
-    SPORT_CATEGORY_CHOICES = [
-        ('soccer', 'Soccer / Football'),
-        ('rugby', 'Rugby'),
-        ('netball', 'Netball'),
-        ('running_athletics', 'Running & Athletics'),
-        ('cricket', 'Cricket'),
-        ('basketball', 'Basketball'),
-        ('swimming', 'Swimming'),
-        ('golf', 'Golf'),
-        ('other', 'Other Sport'),
-    ]
-    CLUB_LEVEL_CHOICES = [
-        ('social_recreational', 'Social & Recreational'),
-        ('amateur_league', 'Amateur League'),
-        ('university_league', 'University League'),
-        ('youth_academy', 'Youth Academy'),
-        ('semi_professional', 'Semi-Professional'),
-    ]
-    DUES_FREQUENCY_CHOICES = [
-        ('monthly', 'Monthly'),
-        ('per_season', 'Per Season'),
-        ('annual', 'Annual'),
-    ]
-
-    group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name='sports_profile')
-    sport_category = models.CharField(max_length=30, choices=SPORT_CATEGORY_CHOICES, default='soccer')
-    club_level = models.CharField(max_length=30, choices=CLUB_LEVEL_CHOICES, default='social_recreational')
-    
-    membership_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    dues_frequency = models.CharField(max_length=20, choices=DUES_FREQUENCY_CHOICES, default='monthly')
-    match_fee_per_game = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    
-    kit_equipment_fund_enabled = models.BooleanField(default=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Sports Profile - {self.group.name}"
-
-
 class GroupExcessProfile(models.Model):
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name='excess_profile')
     max_excess_payout = models.DecimalField(max_digits=10, decimal_places=2, default=5000.00)
@@ -652,8 +609,6 @@ def ensure_group_profile(sender, instance, created, **kwargs):
         GroupStokvelProfile.objects.get_or_create(group=instance)
     elif instance.purpose == 'student':
         GroupStudentProfile.objects.get_or_create(group=instance)
-    elif instance.purpose == 'sports':
-        GroupSportsProfile.objects.get_or_create(group=instance)
 
     # If recurring contributions enabled, ensure current cycle exists
     if instance.enable_recurring_contributions and instance.recurring_amount > 0:

@@ -14,6 +14,10 @@ urlpatterns = [
     path('groups/', views.GroupsListView.as_view(), name='groups'),
     path('groups/<int:pk>/', views.GroupDetailView.as_view(), name='group_detail'),
 
+    # Organisations
+    path('organisations/', views.OrganisationsListView.as_view(), name='organisations'),
+    path('organisations/<int:pk>/', views.OrganisationDetailView.as_view(), name='organisation_detail'),
+
     # Finance
     path('finance/', views.FinanceView.as_view(), name='finance'),
 

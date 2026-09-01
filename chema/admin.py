@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Group, Organisation, GroupMembership, Post, PostImage, Comment, Reply, Dependent,
-    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile,
+    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile,
     ContributionCycle, MemberCyclePayment
 )
 
@@ -42,10 +42,7 @@ class GroupStudentProfileInline(admin.StackedInline):
     can_delete = False
 
 
-class GroupSportsProfileInline(admin.StackedInline):
-    model = GroupSportsProfile
-    extra = 0
-    can_delete = False
+
 
 
 class PostImageInline(admin.TabularInline):
@@ -71,7 +68,6 @@ class GroupAdmin(admin.ModelAdmin):
         GroupChurchProfileInline,
         GroupStokvelProfileInline,
         GroupStudentProfileInline,
-        GroupSportsProfileInline,
     ]
     fieldsets = (
         ('Basic Info', {

@@ -1,0 +1,176 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ org.name }}{% endblock %}
+{% block breadcrumb %}<a href="{% url 'dashboard:organisations' %}">Organisations</a> <span style="margin:0 6px;">›</span> {{ org.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="d-flex align-center gap-3">
+    <div class="admin-avatar" style="width:52px;height:52px;font-size:22px;background:linear-gradient(135deg,#7c3aed,#3fd2c7);">
+      {{ org.name|default:"O"|slice:":1"|upper }}
+    </div>
+    <div>
+      <h1 class="page-title">{{ org.name }}</h1>
+      <p class="page-subtitle">{{ org.get_entity_type_display }} · Registered {{ org.date|date:"M d, Y"|default:"—" }}</p>
+    </div>
+  </div>
+  <div class="page-actions">
+    <form method="post" style="display:flex;gap:8px;">
+      {% csrf_token %}
+      {% if org.is_verified %}
+        <button type="submit" name="action" value="toggle_verify" class="btn btn-muted btn-sm" title="Revoke verified badge">Revoke Verification</button>
+      {% else %}
+        <button type="submit" name="action" value="toggle_verify" class="btn btn-cyan btn-sm">✓ Verify Entity</button>
+      {% endif %}
+      {% if org.is_active %}
+        <button type="submit" name="action" value="toggle_active" class="btn btn-danger btn-sm" onclick="return confirm('Deactivate organisation?')">Deactivate</button>
+      {% else %}
+        <button type="submit" name="action" value="toggle_active" class="btn btn-success btn-sm">Activate</button>
+      {% endif %}
+    </form>
+    <a href="{% url 'dashboard:organisations' %}" class="btn btn-secondary btn-sm">← Back</a>
+  </div>
+</div>
+
+<!-- ── Status Badges ──────────────────────────────────────── -->
+<div class="d-flex gap-2 mb-3">
+  {% if org.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}
+  {% if org.is_verified %}<span class="badge badge-success">✓ Verified Official Entity</span>{% else %}<span class="badge badge-warning">Unverified</span>{% endif %}
+  <span class="badge badge-accent">{{ org.get_entity_type_display }}</span>
+</div>
+
+<!-- ── KPI Strip ──────────────────────────────────────────── -->
+<div class="stat-strip mb-3">
+  <div class="stat-strip-item">
+    <div class="stat-strip-value text-success">R {{ wallet_balance|floatformat:2 }}</div>
+    <div class="stat-strip-label">Wallet Balance</div>
+  </div>
+  <div class="stat-strip-item">
+    <div class="stat-strip-value">{{ admins_list|length }}</div>
+    <div class="stat-strip-label">Designated Admins</div>
+  </div>
+  <div class="stat-strip-item">
+    <div class="stat-strip-value">{{ campaigns|length }}</div>
+    <div class="stat-strip-label">Affiliated Campaigns</div>
+  </div>
+  <div class="stat-strip-item">
+    <div class="stat-strip-value">{{ recent_transactions|length }}</div>
+    <div class="stat-strip-label">Recent Transactions</div>
+  </div>
+</div>
+
+<!-- ── Two Column Profile ──────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;" class="mb-3">
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">🏛️ Organisation Profile & Compliance</span></div>
+    <div class="panel-body">
+      <table class="dash-table">
+        <tbody>
+          <tr><td class="text-muted">Entity Name</td><td class="bold">{{ org.name }}</td></tr>
+          <tr><td class="text-muted">Entity Type</td><td><span class="badge badge-accent">{{ org.get_entity_type_display }}</span></td></tr>
+          <tr><td class="text-muted">Registration Number</td><td class="mono">{{ org.registration_number|default:"Not Provided" }}</td></tr>
+          <tr><td class="text-muted">Contact Email</td><td>{{ org.email|default:"—" }}</td></tr>
+          <tr><td class="text-muted">Contact Phone</td><td class="mono">{{ org.phone_number|default:"—" }}</td></tr>
+          <tr><td class="text-muted">Wallet ID</td><td class="mono text-small">{{ org.external_wallet_id|default:"—" }}</td></tr>
+          <tr><td class="text-muted">Description</td><td>{{ org.description|default:"No description provided." }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">🛡️ Organisation Leadership</span></div>
+    <div class="panel-body">
+      <div class="activity-feed">
+        {% for admin_user in admins_list %}
+        <div class="activity-item">
+          <div class="user-avatar-sm">{{ admin_user.profile.first_name|default:admin_user.phone|slice:":1"|upper }}</div>
+          <div class="activity-content">
+            <div class="activity-title">
+              <a href="{% url 'dashboard:user_detail' admin_user.pk %}" class="bold">
+                {{ admin_user.profile.full_name|default:admin_user.phone }}
+              </a>
+            </div>
+            <div class="activity-time">
+              {% if admin_user == org.creator %}<span class="badge badge-accent">Primary Creator</span>{% else %}<span class="badge badge-muted">Admin / Signatory</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="empty-state"><div class="empty-state-title">No designated admins</div></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Affiliated Campaigns ───────────────────────────────── -->
+<div class="panel mb-3">
+  <div class="panel-header"><span class="panel-title">📢 Organisation Campaigns ({{ campaigns|length }})</span></div>
+  <div class="table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Campaign</th>
+          <th>Type</th>
+          <th>Target</th>
+          <th>Raised</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campaigns %}
+        <tr>
+          <td class="bold">{{ c.title }}</td>
+          <td><span class="badge badge-accent">{{ c.campaign_type }}</span></td>
+          <td class="money">R {{ c.target_amount|floatformat:2 }}</td>
+          <td class="money text-success">R {{ c.get_total_raised|floatformat:2 }}</td>
+          <td>
+            {% if c.contributions_open %}<span class="badge badge-success">Open</span>{% else %}<span class="badge badge-muted">Closed</span>{% endif %}
+            {% if c.funds_disbursed %}<span class="badge badge-cyan">Disbursed</span>{% endif %}
+          </td>
+          <td class="text-small text-muted">{{ c.created_at|date:"M d, Y" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="empty-state"><div class="empty-state-title">No campaigns launched by this organisation yet</div></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Transactions ──────────────────────────────────────── -->
+<div class="panel">
+  <div class="panel-header"><span class="panel-title">💳 Recent Financial Transactions</span></div>
+  <div class="table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Fee</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in recent_transactions %}
+        <tr>
+          <td><span class="badge badge-accent">{{ tx.transaction_type }}</span></td>
+          <td class="money">R {{ tx.amount|floatformat:2 }}</td>
+          <td class="text-muted">R {{ tx.fee_amount|floatformat:2 }}</td>
+          <td>
+            {% if tx.status == 'COMPLETED' %}<span class="badge badge-success">Completed</span>
+            {% elif tx.status == 'PENDING' %}<span class="badge badge-warning">Pending</span>
+            {% else %}<span class="badge badge-danger">Failed</span>{% endif %}
+          </td>
+          <td class="text-small text-muted">{{ tx.timestamp|date:"M d, H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5"><div class="empty-state"><div class="empty-state-title">No transactions recorded</div></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

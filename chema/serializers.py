@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Group, GroupMembership, Post, PostImage, Comment, Reply, Dependent, Organisation,
-    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupSportsProfile, GroupExcessProfile,
+    GroupBereavementProfile, GroupChurchProfile, GroupStokvelProfile, GroupStudentProfile, GroupExcessProfile,
     ContributionCycle, MemberCyclePayment
 )
 from user.serializers import ProfileSerializer
@@ -127,16 +127,6 @@ class GroupStudentProfileSerializer(serializers.ModelSerializer):
         ]
 
 
-class GroupSportsProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GroupSportsProfile
-        fields = [
-            'sport_category', 'club_level',
-            'membership_fee', 'dues_frequency', 'match_fee_per_game',
-            'kit_equipment_fund_enabled'
-        ]
-
-
 class GroupSerializer(serializers.ModelSerializer):
     total_members = serializers.IntegerField(source='get_total_members', read_only=True)
     balance = serializers.DecimalField(source='get_balance', max_digits=10, decimal_places=2, read_only=True)
@@ -152,7 +142,6 @@ class GroupSerializer(serializers.ModelSerializer):
     church_profile = GroupChurchProfileSerializer(required=False, allow_null=True)
     stokvel_profile = GroupStokvelProfileSerializer(required=False, allow_null=True)
     student_profile = GroupStudentProfileSerializer(required=False, allow_null=True)
-    sports_profile = GroupSportsProfileSerializer(required=False, allow_null=True)
 
     class Meta:
         model = Group
@@ -173,7 +162,7 @@ class GroupSerializer(serializers.ModelSerializer):
             'min_disbursement_approvals',
             # Type-specific Profiles
             'bereavement_profile', 'church_profile', 'stokvel_profile',
-            'student_profile', 'sports_profile',
+            'student_profile',
         ]
 
     def get_is_selected(self, obj):
@@ -269,7 +258,6 @@ class GroupSerializer(serializers.ModelSerializer):
         church_data = validated_data.pop('church_profile', None)
         stokvel_data = validated_data.pop('stokvel_profile', None)
         student_data = validated_data.pop('student_profile', None)
-        sports_data = validated_data.pop('sports_profile', None)
 
         group = super().create(validated_data)
 
@@ -293,11 +281,6 @@ class GroupSerializer(serializers.ModelSerializer):
                 setattr(group.student_profile, attr, val)
             group.student_profile.save()
 
-        if sports_data and hasattr(group, 'sports_profile'):
-            for attr, val in sports_data.items():
-                setattr(group.sports_profile, attr, val)
-            group.sports_profile.save()
-
         return group
 
     def update(self, instance, validated_data):
@@ -305,7 +288,6 @@ class GroupSerializer(serializers.ModelSerializer):
         church_data = validated_data.pop('church_profile', None)
         stokvel_data = validated_data.pop('stokvel_profile', None)
         student_data = validated_data.pop('student_profile', None)
-        sports_data = validated_data.pop('sports_profile', None)
 
         group = super().update(instance, validated_data)
 
@@ -330,12 +312,6 @@ class GroupSerializer(serializers.ModelSerializer):
         if student_data:
             prof, _ = GroupStudentProfile.objects.get_or_create(group=group)
             for attr, val in student_data.items():
-                setattr(prof, attr, val)
-            prof.save()
-
-        if sports_data:
-            prof, _ = GroupSportsProfile.objects.get_or_create(group=group)
-            for attr, val in sports_data.items():
                 setattr(prof, attr, val)
             prof.save()
 

@@ -1,0 +1,133 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Organisations{% endblock %}
+{% block breadcrumb %}Organisations{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Organisation Management</h1>
+    <p class="page-subtitle">{{ total }} registered entities · NGOs, Churches, NPOs, and Corporate Partners</p>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div class="search-input-wrap">
+    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <input type="text" name="q" class="form-control" placeholder="Search by name, reg number, email…" value="{{ q }}">
+  </div>
+  <select name="entity_type" class="form-control" style="width:auto;min-width:160px;">
+    <option value="">All Entity Types</option>
+    {% for val, label in entity_type_choices %}
+      <option value="{{ val }}" {% if entity_type_filter == val %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="is_verified" class="form-control" style="width:auto;min-width:140px;">
+    <option value="">All Verification</option>
+    <option value="1" {% if verified_filter == '1' %}selected{% endif %}>Verified Only</option>
+    <option value="0" {% if verified_filter == '0' %}selected{% endif %}>Unverified Only</option>
+  </select>
+  <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+  {% if q or entity_type_filter or verified_filter %}<a href="{% url 'dashboard:organisations' %}" class="btn btn-secondary btn-sm">Clear</a>{% endif %}
+</form>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Organisation</th>
+          <th>Entity Type</th>
+          <th>Reg Number</th>
+          <th>Creator / Lead</th>
+          <th>Wallet Balance</th>
+          <th>Verification</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for org in organisations %}
+        <tr>
+          <td>
+            <div class="user-cell">
+              <div class="user-avatar-sm" style="background:linear-gradient(135deg,#7c3aed,#3fd2c7);">
+                {{ org.name|default:"O"|slice:":1"|upper }}
+              </div>
+              <div>
+                <div class="user-cell-name">{{ org.name }}</div>
+                <div class="user-cell-sub">{{ org.email|default:org.phone_number|default:"No direct contact" }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-accent">{{ org.get_entity_type_display }}</span></td>
+          <td class="mono text-small">{{ org.registration_number|default:"—" }}</td>
+          <td>
+            {% if org.creator %}
+              <a href="{% url 'dashboard:user_detail' org.creator.pk %}" class="bold text-small">
+                {{ org.creator.profile.full_name|default:org.creator.phone }}
+              </a>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="money">{{ org.wallet_balance|floatformat:2 }}</td>
+          <td>
+            {% if org.is_verified %}
+              <span class="badge badge-success">✓ Verified</span>
+            {% else %}
+              <span class="badge badge-muted">Unverified</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if org.is_active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-danger">Inactive</span>{% endif %}
+          </td>
+          <td class="text-small text-muted">{{ org.date|date:"M d, Y"|default:"—" }}</td>
+          <td>
+            <div class="d-flex gap-2">
+              <a href="{% url 'dashboard:organisation_detail' org.pk %}" class="btn btn-secondary btn-xs">View</a>
+              <form method="post" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="org_id" value="{{ org.pk }}">
+                {% if org.is_verified %}
+                  <button type="submit" name="action" value="unverify" class="btn btn-muted btn-xs" title="Revoke verification">Revoke</button>
+                {% else %}
+                  <button type="submit" name="action" value="verify" class="btn btn-cyan btn-xs" title="Verify entity">Verify</button>
+                {% endif %}
+                {% if org.is_active %}
+                  <button type="submit" name="action" value="deactivate" class="btn btn-danger btn-xs"
+                          onclick="return confirm('Deactivate organisation?')">Deactivate</button>
+                {% else %}
+                  <button type="submit" name="action" value="activate" class="btn btn-success btn-xs">Activate</button>
+                {% endif %}
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9">
+            <div class="empty-state">
+              <div class="empty-state-icon">🏛️</div>
+              <div class="empty-state-title">No organisations found</div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if current_page > 1 %}<a href="?page={{ current_page|add:"-1" }}&q={{ q }}&entity_type={{ entity_type_filter }}&is_verified={{ verified_filter }}" class="page-btn">←</a>{% endif %}
+    {% for p in page_range %}
+      <a href="?page={{ p }}&q={{ q }}&entity_type={{ entity_type_filter }}&is_verified={{ verified_filter }}" class="page-btn {% if p == current_page %}active{% endif %}">{{ p }}</a>
+    {% endfor %}
+    {% if current_page < total_pages %}<a href="?page={{ current_page|add:"1" }}&q={{ q }}&entity_type={{ entity_type_filter }}&is_verified={{ verified_filter }}" class="page-btn">→</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
