@@ -280,12 +280,12 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '60/min',
-        'user': '200/min',
+        'anon': '1000/min' if DEBUG else '60/min',
+        'user': '1000/min' if DEBUG else '200/min',
         # Custom scopes used on OTP/auth views (see api_v1/views.py)
-        'otp_request': '5/hour',   # stops SMS-flood: max 5 OTP requests per hour per IP
-        'otp_verify':  '10/hour',  # stops OTP brute-force
-        'pin_verify':  '10/hour',  # stops PIN brute-force
+        'otp_request': '1000/min' if DEBUG else '5/hour',   # stops SMS-flood: max 5 OTP requests per hour per IP
+        'otp_verify':  '1000/min' if DEBUG else '10/hour',  # stops OTP brute-force
+        'pin_verify':  '1000/min' if DEBUG else '10/hour',  # stops PIN brute-force
     },
 }
 
@@ -316,4 +316,12 @@ FLW_ENCRYPTION_KEY = os.environ.get('FLW_ENCRYPTION_KEY')
 # phone numbers stored in withdrawal_metadata)
 # Generate key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # ------------------------------------------------------------------
-FERNET_KEY = os.environ.get('FERNET_KEY', '')
+FERNET_KEY = os.environ.get('FERNET_KEY', '')
+
+# ------------------------------------------------------------------
+# Meta WhatsApp Cloud API Configuration
+# ------------------------------------------------------------------
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.environ.get('WHATSAPP_BUSINESS_ACCOUNT_ID', '')
+

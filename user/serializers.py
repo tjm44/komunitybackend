@@ -4,17 +4,21 @@ from .models import CustomUser, Profile
 class ProfileSerializer(serializers.ModelSerializer):
     active_role = serializers.SerializerMethodField()
     phone = serializers.CharField(source='user.phone', read_only=True)
+    username = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
-            'id', 'user', 'first_name', 'surname', 'full_name', 'email', 'is_email_verified',
+            'id', 'user', 'username', 'first_name', 'surname', 'full_name', 'email', 'is_email_verified',
             'date_of_birth', 'phone', 'profile_picture', 'cultural_background', 
             'religious_affiliation', 'traditional_names', 'spiritual_beliefs', 'bio', 
             'is_complete', 'is_deceased', 'is_active', 'date_of_death',
             'active_role', 'is_verified'
         ]
-        read_only_fields = ['user', 'full_name', 'phone', 'is_complete', 'active_role', 'is_verified']
+        read_only_fields = ['user', 'username', 'full_name', 'phone', 'is_complete', 'active_role', 'is_verified']
+
+    def get_username(self, obj):
+        return obj.full_name or (obj.user.phone if obj.user else None) or "User"
 
     def validate_email(self, value):
         """Convert empty string to None so unique=True doesn't fire for blank emails."""

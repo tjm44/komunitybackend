@@ -4,7 +4,7 @@ from .models import (
     PlatformFeeConfig, PlatformFeeLedger,
     SMSCreditPackage, GroupSMSCreditBalance, SMSCreditPurchase,
     GroupSubscription, UserSubscription, ServiceVendor, VendorBooking,
-    MicroInsurancePolicy, InsurancePolicyEnrollment
+    MicroInsurancePolicy, InsurancePolicyEnrollment, SavedCard
 )
 from chema.serializers import GroupSerializer
 from user.serializers import ProfileSerializer
@@ -357,5 +357,19 @@ class InsurancePolicyEnrollmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = InsurancePolicyEnrollment
         fields = ['id', 'policy', 'policy_detail', 'group', 'enrolled_by', 'enrolled_members_count', 'is_active', 'created_at']
+
+
+class SavedCardSerializer(serializers.ModelSerializer):
+    """
+    Serializer for safe tokenized card display.
+    Excludes sensitive customer_id and payment_method_id for PCI compliance.
+    """
+    class Meta:
+        model = SavedCard
+        fields = [
+            'id', 'card_brand', 'last4', 'expiry_month', 'expiry_year',
+            'cardholder_name', 'is_default', 'created_at'
+        ]
+        read_only_fields = ['id', 'card_brand', 'last4', 'expiry_month', 'expiry_year', 'created_at']
 
 

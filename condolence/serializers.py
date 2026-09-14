@@ -75,6 +75,7 @@ class FundCampaignSerializer(serializers.ModelSerializer):
     created_by_detail = ProfileSerializer(source='created_by', read_only=True)
     group_detail = GroupSerializer(source='group', read_only=True)
     organisation_detail = OrganisationSerializer(source='organisation', read_only=True)
+    campaign_type = serializers.CharField(required=False, default='custom')
     total_raised = serializers.SerializerMethodField()
     contributor_count = serializers.SerializerMethodField()
     balance = serializers.SerializerMethodField()
@@ -141,14 +142,12 @@ class FundCampaignSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A campaign cannot be linked to both a Group and an Organisation.")
 
         if group:
-            # Group purpose mapping: 'bereavement' -> 'bereavement', 'excess' -> 'excess', 'custom' -> 'custom'
-            if campaign_type == 'emergency':
-                raise serializers.ValidationError("Emergency campaigns are only available to Organisations.")
-            if group.purpose != campaign_type:
-                raise serializers.ValidationError(
-                    f"This community's purpose is '{group.get_purpose_display()}'. "
-                    f"It cannot launch a campaign of type '{campaign_type}'."
-                )
+            # The group is the category: auto-assign campaign_type from group purpose
+            valid_types = ['bereavement', 'excess', 'custom']
+            group_purpose = getattr(group, 'purpose', 'custom')
+            assigned_type = group_purpose if group_purpose in valid_types else 'custom'
+            data['campaign_type'] = assigned_type
+            campaign_type = assigned_type
 
         if organisation:
             # Emergency campaigns require verification
@@ -161,5 +160,8 @@ class FundCampaignSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"Campaigns of type '{campaign_type}' are only available to community Groups."
                 )
+
+        if campaign_type not in dict(FundCampaign.CAMPAIGN_TYPE_CHOICES):
+            data['campaign_type'] = 'custom'
 
         return data

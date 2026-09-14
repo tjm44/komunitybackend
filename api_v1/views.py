@@ -27,18 +27,36 @@ from rest_framework.throttling import AnonRateThrottle
 
 
 class OTPRequestThrottle(AnonRateThrottle):
-    """Max 5 OTP SMS requests per hour per IP — prevents SMS-flood attacks."""
+    """Max 5 OTP SMS requests per hour per IP — prevents SMS-flood attacks. Suspended in DEBUG mode."""
     scope = 'otp_request'
+
+    def allow_request(self, request, view):
+        from django.conf import settings
+        if getattr(settings, 'DEBUG', False):
+            return True
+        return super().allow_request(request, view)
 
 
 class OTPVerifyThrottle(AnonRateThrottle):
-    """Max 10 OTP verification attempts per hour per IP — prevents brute-force."""
+    """Max 10 OTP verification attempts per hour per IP — prevents brute-force. Suspended in DEBUG mode."""
     scope = 'otp_verify'
+
+    def allow_request(self, request, view):
+        from django.conf import settings
+        if getattr(settings, 'DEBUG', False):
+            return True
+        return super().allow_request(request, view)
 
 
 class PINVerifyThrottle(AnonRateThrottle):
-    """Max 10 PIN verification attempts per hour per IP — prevents PIN brute-force."""
+    """Max 10 PIN verification attempts per hour per IP — prevents PIN brute-force. Suspended in DEBUG mode."""
     scope = 'pin_verify'
+
+    def allow_request(self, request, view):
+        from django.conf import settings
+        if getattr(settings, 'DEBUG', False):
+            return True
+        return super().allow_request(request, view)
 
 
 # Maximum number of OTP verification failures before the record is locked.
@@ -324,6 +342,47 @@ class SetPINView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+def verify_user_pin(user, pin):
+    """
+    Validates user transaction PIN. Returns (True, None) on success,
+    or (False, Response) on failure.
+    """
+    if not user or not user.is_authenticated:
+        return False, Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not getattr(user, 'has_pin', False):
+        return False, Response({
+            'error': 'No security PIN set for your account. Please set up a 4-digit security PIN in your Profile settings before transacting.',
+            'code': 'PIN_NOT_SET'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    if not pin or not str(pin).strip():
+        return False, Response({
+            'error': '4-digit Security PIN is required to authorize this transaction.',
+            'code': 'PIN_REQUIRED'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    if not user.check_pin(str(pin).strip()):
+        return False, Response({
+            'error': 'Incorrect security PIN. Please try again.',
+            'code': 'INVALID_PIN'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    return True, None
+
+
+class VerifyCurrentPINView(APIView):
+    """
+    Endpoint: POST /api/v1/auth/verify-current-pin/
+    Body: {"pin": "1234"}
+    Validates the user's 4-digit security PIN for step-up authorization.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        pin = request.data.get('pin', '').strip()
+        valid, err_resp = verify_user_pin(request.user, pin)
+        if not valid:
+            return err_resp
+        return Response({'valid': True, 'message': 'PIN verified successfully.'}, status=status.HTTP_200_OK)
+
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from decimal import Decimal
@@ -592,14 +651,32 @@ class GroupViewSet(viewsets.ModelViewSet):
         serializer = GroupMembershipSerializer(memberships, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=StandardPagination)
     def discover(self, request):
-        # This will use get_queryset() which already filters out joined groups if action is 'list'
-        # But we want to be explicit here
         queryset = Group.objects.filter(is_active=True).exclude(
             groupmembership__member=request.user.profile,
             groupmembership__status='active'
-        ).distinct().order_by('-created_at')
+        ).distinct()
+
+        # Type / Purpose filter
+        purpose = request.query_params.get('purpose')
+        if purpose and purpose != 'all':
+            queryset = queryset.filter(purpose=purpose)
+
+        # Search query (by name or description)
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(description__icontains=search)
+            )
+
+        queryset = queryset.order_by('-created_at')
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -1059,7 +1136,11 @@ class GroupViewSet(viewsets.ModelViewSet):
         Member pays their recurring contribution for a cycle using their wallet balance.
         """
         group = self.get_object()
-        profile = request.user.profile
+
+        try:
+            profile = request.user.profile
+        except Exception:
+            return Response({'error': 'User profile not found. Please complete your profile setup.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not group.is_member(request.user):
             return Response({'error': 'You must be an active member of this group to make contributions.'}, status=status.HTTP_403_FORBIDDEN)
@@ -1085,7 +1166,19 @@ class GroupViewSet(viewsets.ModelViewSet):
         if payment.status == 'paid':
             return Response({'error': 'You have already completed your contribution for this cycle.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        amount_to_pay = Decimal(str(request.data.get('amount', payment.amount_due or cycle.target_amount_per_member)))
+        # Use explicit None check so Decimal(0.00) doesn't fall through as falsy
+        raw_amount = request.data.get('amount')
+        if raw_amount is not None:
+            fallback_amount = raw_amount
+        elif payment.amount_due is not None and payment.amount_due > 0:
+            fallback_amount = payment.amount_due
+        else:
+            fallback_amount = cycle.target_amount_per_member or 0
+
+        try:
+            amount_to_pay = Decimal(str(fallback_amount))
+        except Exception:
+            return Response({'error': 'Invalid contribution amount provided.'}, status=status.HTTP_400_BAD_REQUEST)
         if amount_to_pay <= 0:
             return Response({'error': 'Contribution amount must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1646,6 +1739,11 @@ class DeceasedViewSet(viewsets.ModelViewSet):
         deceased = self.get_object()
         if not deceased.group.is_admin(request.user):
             return Response({'error': 'Only group admins can disburse funds'}, status=status.HTTP_403_FORBIDDEN)
+        
+        pin = request.data.get('pin')
+        pin_valid, pin_error = verify_user_pin(request.user, pin)
+        if not pin_valid:
+            return pin_error
         
         if not deceased.beneficiary:
             return Response({'error': 'No beneficiary assigned'}, status=status.HTTP_400_BAD_REQUEST)
@@ -2254,10 +2352,50 @@ class WalletViewSet(viewsets.ModelViewSet):
             'is_verified': getattr(profile, 'is_verified', False),
         })
 
+    @action(detail=False, methods=['get'])
+    def saved_cards(self, request):
+        from wallet.models import SavedCard
+        from wallet.serializers import SavedCardSerializer
+        cards = SavedCard.objects.filter(user=request.user).order_by('-is_default', '-created_at')
+        return Response(SavedCardSerializer(cards, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def delete_saved_card(self, request):
+        from wallet.models import SavedCard
+        card_id = request.data.get('card_id')
+        if not card_id:
+            return Response({'error': 'card_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        card = SavedCard.objects.filter(id=card_id, user=request.user).first()
+        if not card:
+            return Response({'error': 'Card not found.'}, status=status.HTTP_404_NOT_FOUND)
+        was_default = card.is_default
+        card.delete()
+        if was_default:
+            next_card = SavedCard.objects.filter(user=request.user).first()
+            if next_card:
+                next_card.is_default = True
+                next_card.save(update_fields=['is_default'])
+        return Response({'status': 'success', 'message': 'Card deleted successfully.'})
+
+    @action(detail=False, methods=['post'])
+    def set_default_card(self, request):
+        from wallet.models import SavedCard
+        card_id = request.data.get('card_id')
+        if not card_id:
+            return Response({'error': 'card_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        card = SavedCard.objects.filter(id=card_id, user=request.user).first()
+        if not card:
+            return Response({'error': 'Card not found.'}, status=status.HTTP_404_NOT_FOUND)
+        SavedCard.objects.filter(user=request.user).update(is_default=False)
+        card.is_default = True
+        card.save(update_fields=['is_default'])
+        return Response({'status': 'success', 'message': 'Default card updated.'})
+
     @action(detail=False, methods=['post'])
     def top_up(self, request):
         import uuid
-        from wallet.flutterwave import charge_voucher, charge_card
+        from wallet.flutterwave import charge_voucher, charge_card, charge_saved_card, detect_card_brand
+        from wallet.models import SavedCard
 
         wallet, _ = Wallet.objects.get_or_create(
             user=request.user,
@@ -2265,8 +2403,8 @@ class WalletViewSet(viewsets.ModelViewSet):
         )
 
         payment_method = request.data.get('payment_method', 'voucher')
-        if payment_method not in ('voucher', 'card'):
-            return Response({'error': 'Invalid payment_method. Must be card or voucher.'}, status=status.HTTP_400_BAD_REQUEST)
+        if payment_method not in ('voucher', 'card', 'saved_card'):
+            return Response({'error': 'Invalid payment_method. Must be card, saved_card, or voucher.'}, status=status.HTTP_400_BAD_REQUEST)
 
         voucher_pin = None
         card_number = None
@@ -2274,11 +2412,27 @@ class WalletViewSet(viewsets.ModelViewSet):
         expiry_year = None
         cvv = None
         amount = 100.00
+        saved_card = None
 
         if payment_method == 'voucher':
             voucher_pin = request.data.get('voucher_pin')
             if not voucher_pin:
                 return Response({'error': 'voucher_pin is required'}, status=status.HTTP_400_BAD_REQUEST)
+        elif payment_method == 'saved_card':
+            saved_card_id = request.data.get('saved_card_id')
+            amount_val = request.data.get('amount')
+            if not saved_card_id or not amount_val:
+                return Response({'error': 'saved_card_id and amount are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                amount = float(amount_val)
+                if amount <= 0:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                return Response({'error': 'Invalid amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            saved_card = SavedCard.objects.filter(id=saved_card_id, user=request.user).first()
+            if not saved_card:
+                return Response({'error': 'Saved card not found.'}, status=status.HTTP_404_NOT_FOUND)
         else:
             card_number = request.data.get('card_number')
             expiry_month = request.data.get('expiry_month')
@@ -2307,9 +2461,8 @@ class WalletViewSet(viewsets.ModelViewSet):
 
         # Get phone from user profile if available
         phone = getattr(getattr(request.user, 'profile', None), 'phone', None) or '0000000000'
-
         user_email = getattr(getattr(request.user, 'profile', None), 'email', 'user@example.com') or 'user@example.com'
-        
+
         # Call Flutterwave Sandbox
         if payment_method == 'voucher':
             flw_response = charge_voucher(
@@ -2317,6 +2470,13 @@ class WalletViewSet(viewsets.ModelViewSet):
                 amount=100.00,   # Sandbox: default 100 ZAR; amount comes back from the voucher
                 email=user_email,
                 phone_number=phone,
+                tx_ref=tx_ref
+            )
+        elif payment_method == 'saved_card':
+            flw_response = charge_saved_card(
+                customer_id=saved_card.customer_id,
+                payment_method_id=saved_card.payment_method_id,
+                amount=amount,
                 tx_ref=tx_ref
             )
         else:
@@ -2339,6 +2499,32 @@ class WalletViewSet(viewsets.ModelViewSet):
             transaction.save()
             _apply_platform_fee(transaction, 'TOP_UP')
             wallet.recalculate_balance()
+
+            # Handle optional card saving
+            save_card = request.data.get('save_card')
+            if payment_method == 'card' and save_card in (True, 'true', 'True', 1, '1'):
+                cust_id = flw_response.get('customer_id')
+                pm_id = flw_response.get('payment_method_id')
+                if cust_id and pm_id:
+                    clean_num = card_number.replace(' ', '').replace('-', '')
+                    brand = detect_card_brand(clean_num)
+                    last4 = clean_num[-4:]
+                    exp_m = str(expiry_month).zfill(2)
+                    exp_y = str(expiry_year)
+                    is_first = not SavedCard.objects.filter(user=request.user).exists()
+                    SavedCard.objects.update_or_create(
+                        user=request.user,
+                        payment_method_id=pm_id,
+                        defaults={
+                            'customer_id': cust_id,
+                            'card_brand': brand,
+                            'last4': last4,
+                            'expiry_month': exp_m,
+                            'expiry_year': exp_y,
+                            'is_default': is_first,
+                        }
+                    )
+
             return Response({
                 'status': 'success',
                 'balance': str(wallet.get_balance()),
@@ -2355,6 +2541,11 @@ class WalletViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def withdraw(self, request):
+        pin = request.data.get('pin')
+        pin_valid, pin_error = verify_user_pin(request.user, pin)
+        if not pin_valid:
+            return pin_error
+
         wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"WAAS_{request.user.id}"})
         amount = request.data.get('amount')
         channel = request.data.get('channel')
@@ -2421,6 +2612,11 @@ class WalletViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def send_money(self, request):
+        pin = request.data.get('pin')
+        pin_valid, pin_error = verify_user_pin(request.user, pin)
+        if not pin_valid:
+            return pin_error
+
         from django.db import transaction as db_transaction
         
         sender_wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"WAAS_{request.user.id}"})
@@ -2496,6 +2692,11 @@ class WalletViewSet(viewsets.ModelViewSet):
     def contribute_to_deceased(self, request):
         from condolence.models import Deceased, Contribution
         from django.db import transaction as db_transaction
+        
+        pin = request.data.get('pin')
+        pin_valid, pin_error = verify_user_pin(request.user, pin)
+        if not pin_valid:
+            return pin_error
         
         wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"WAAS_{request.user.id}"})
         deceased_id = request.data.get('deceased_id')

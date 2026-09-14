@@ -4,8 +4,16 @@ from .models import (
     PlatformFeeConfig, PlatformFeeLedger,
     SMSCreditPackage, GroupSMSCreditBalance, SMSCreditPurchase,
     GroupSubscription, UserSubscription, ServiceVendor, VendorBooking,
-    MicroInsurancePolicy, InsurancePolicyEnrollment
+    MicroInsurancePolicy, InsurancePolicyEnrollment, SavedCard
 )
+
+@admin.register(SavedCard)
+class SavedCardAdmin(admin.ModelAdmin):
+    list_display = ('user', 'card_brand', 'last4', 'expiry_month', 'expiry_year', 'is_default', 'created_at')
+    list_filter = ('card_brand', 'is_default', 'created_at')
+    search_fields = ('user__phone', 'user__email', 'last4')
+    readonly_fields = ('created_at', 'updated_at', 'customer_id', 'payment_method_id')
+
 
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):

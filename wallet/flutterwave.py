@@ -170,6 +170,41 @@ def charge_card(card_number, expiry_month, expiry_year, cvv, amount, email, phon
         # Generate a fresh 12-char alphanumeric nonce for this transaction
         nonce = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
 
+        # --- Card Validation & Graceful Error Handling ---
+        raw_card = card_number.replace(' ', '').replace('-', '')
+        if not raw_card.isdigit() or len(raw_card) not in (15, 16):
+            return {'success': False, 'error': 'Invalid card number. Please enter a valid 15 or 16 digit debit/credit card number.'}
+
+        # Validate expiry month and year
+        try:
+            exp_m = int(expiry_month)
+            exp_y = int(expiry_year)
+            # Handle 2-digit years like '26' or 4-digit '2026'
+            if exp_y < 100:
+                exp_y += 2000
+            if exp_m < 1 or exp_m > 12:
+                return {'success': False, 'error': 'Invalid expiry month. Please enter a month between 01 and 12.'}
+
+            from datetime import datetime
+            now = datetime.now()
+            current_year = now.year
+            current_month = now.month
+            if exp_y < current_year or (exp_y == current_year and exp_m < current_month):
+                return {'success': False, 'error': 'Your card has expired. Please check the expiry date and try again.'}
+        except (ValueError, TypeError):
+            return {'success': False, 'error': 'Invalid card expiry date format (MM/YY).'}
+
+        raw_cvv = str(cvv).strip()
+        if not raw_cvv.isdigit() or len(raw_cvv) not in (3, 4):
+            return {'success': False, 'error': 'Invalid CVV. Please enter the 3 or 4 digit security code on your card.'}
+
+        # Check for simulated test card numbers (sandbox testing)
+        # Sandbox card ending in 0000 or 9999 triggers intentional failure simulation
+        if raw_card.endswith('0000'):
+            return {'success': False, 'error': 'Card declined: Insufficient funds in card account.'}
+        if raw_card.endswith('9999'):
+            return {'success': False, 'error': 'Card declined by issuing bank. Please check your details or use another card.'}
+
         # 1. Create/retrieve customer
         cust_url = f"{FLW_SANDBOX_BASE_URL}/customers"
         cust_payload = {
@@ -194,7 +229,7 @@ def charge_card(card_number, expiry_month, expiry_year, cvv, amount, email, phon
                 customer_id = items[0].get('id')
 
         if not customer_id:
-            return {'success': False, 'error': 'Failed to create or retrieve customer.'}
+            return {'success': False, 'error': 'Unable to verify customer profile for payment. Please try again.'}
 
         # 2. Encrypt card fields and create payment method
         pm_url = f"{FLW_SANDBOX_BASE_URL}/payment-methods"
@@ -202,10 +237,10 @@ def charge_card(card_number, expiry_month, expiry_year, cvv, amount, email, phon
             "type": "card",
             "customer_id": customer_id,
             "card": {
-                "encrypted_card_number": _encrypt_card_field(card_number, enc_key, nonce),
-                "encrypted_expiry_month": _encrypt_card_field(str(expiry_month).zfill(2), enc_key, nonce),
-                "encrypted_expiry_year": _encrypt_card_field(str(expiry_year), enc_key, nonce),
-                "encrypted_cvv": _encrypt_card_field(str(cvv), enc_key, nonce),
+                "encrypted_card_number": _encrypt_card_field(raw_card, enc_key, nonce),
+                "encrypted_expiry_month": _encrypt_card_field(str(exp_m).zfill(2), enc_key, nonce),
+                "encrypted_expiry_year": _encrypt_card_field(str(exp_y)[-2:], enc_key, nonce),
+                "encrypted_cvv": _encrypt_card_field(raw_cvv, enc_key, nonce),
                 "nonce": nonce,
             }
         }
@@ -214,9 +249,14 @@ def charge_card(card_number, expiry_month, expiry_year, cvv, amount, email, phon
         payment_method_id = (pm_data.get('data') or {}).get('id')
 
         if not payment_method_id:
-            err = (pm_data.get('error') or {}).get('message') or pm_data.get('message', 'Failed to create card payment method.')
+            err = (pm_data.get('error') or {}).get('message') or pm_data.get('message', '')
             logger.warning(f"[FLW] Card payment method creation failed: {pm_data}")
-            return {'success': False, 'error': err}
+            friendly_err = 'Card verification failed. Please ensure the card number, expiry date, and CVV are correct.'
+            if 'expired' in err.lower():
+                friendly_err = 'This card has expired. Please check the expiry date.'
+            elif 'invalid' in err.lower() or 'card' in err.lower():
+                friendly_err = 'Invalid card details. Please check your card number, expiry, and CVV.'
+            return {'success': False, 'error': friendly_err}
 
         # 3. Create charge
         charge_url = f"{FLW_SANDBOX_BASE_URL}/charges"
@@ -243,14 +283,97 @@ def charge_card(card_number, expiry_month, expiry_year, cvv, amount, email, phon
             return {
                 'success': True,
                 'amount': amount,
-                'waas_ref': charge_id
+                'waas_ref': charge_id,
+                'customer_id': customer_id,
+                'payment_method_id': payment_method_id,
             }
         else:
-            err = (charge_data.get('error') or {}).get('message') or charge_data.get('message', 'Card charge failed')
-            return {'success': False, 'error': err}
+            raw_err = (charge_data.get('error') or {}).get('message') or charge_data.get('message', '')
+            friendly_err = 'Payment failed. Please verify your card details and ensure sufficient balance.'
+            if 'declined' in raw_err.lower():
+                friendly_err = 'Payment was declined by the card issuer. Please contact your bank or try a different card.'
+            elif 'insufficient' in raw_err.lower():
+                friendly_err = 'Payment declined: Insufficient funds in this card account.'
+            elif raw_err:
+                friendly_err = raw_err
+            return {'success': False, 'error': friendly_err}
 
     except Exception as e:
         logger.error(f"[FLW] Exception in charge_card: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+def detect_card_brand(card_number: str) -> str:
+    """Detects card brand based on card number IIN/BIN prefix."""
+    cleaned = (card_number or '').replace(' ', '').replace('-', '')
+    if cleaned.startswith('4'):
+        return 'Visa'
+    elif cleaned.startswith(('51', '52', '53', '54', '55')):
+        return 'Mastercard'
+    elif len(cleaned) >= 4 and cleaned[:4].isdigit() and 2221 <= int(cleaned[:4]) <= 2720:
+        return 'Mastercard'
+    elif cleaned.startswith(('34', '37')):
+        return 'American Express'
+    elif cleaned.startswith(('6011', '65')):
+        return 'Discover'
+    return 'Bank Card'
+
+
+def charge_saved_card(customer_id, payment_method_id, amount, tx_ref):
+    """
+    Charges a tokenized saved card using its customer_id and payment_method_id.
+    Completely PCI-DSS compliant: no card number or CVV is transmitted.
+    """
+    try:
+        if not customer_id or not payment_method_id:
+            return {'success': False, 'error': 'Invalid saved card credentials.'}
+
+        try:
+            amt = float(amount)
+            if amt <= 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return {'success': False, 'error': 'Invalid amount.'}
+
+        charge_url = f"{FLW_SANDBOX_BASE_URL}/charges"
+        charge_payload = {
+            "amount": amt,
+            "currency": "ZAR",
+            "reference": tx_ref,
+            "customer_id": customer_id,
+            "payment_method_id": payment_method_id,
+            "meta": {
+                "source": "komunity_wallet",
+                "payment_method_type": "saved_card"
+            }
+        }
+
+        charge_headers = get_headers(scenario_key='scenario:charge.succeeded')
+        charge_resp = requests.post(charge_url, json=charge_payload, headers=charge_headers, timeout=15)
+        charge_data = charge_resp.json()
+
+        logger.info(f"[FLW] Sandbox saved card charge result: {charge_data}")
+
+        if charge_resp.status_code in (200, 201):
+            charge_id = (charge_data.get('data') or {}).get('id') or tx_ref
+            return {
+                'success': True,
+                'amount': amt,
+                'waas_ref': charge_id
+            }
+        else:
+            raw_err = (charge_data.get('error') or {}).get('message') or charge_data.get('message', '')
+            friendly_err = 'Payment failed with saved card. Please verify or try another card.'
+            if 'declined' in raw_err.lower():
+                friendly_err = 'Payment was declined by your card issuer.'
+            elif 'insufficient' in raw_err.lower():
+                friendly_err = 'Payment declined: Insufficient funds in this card account.'
+            elif raw_err:
+                friendly_err = raw_err
+            return {'success': False, 'error': friendly_err}
+
+    except Exception as e:
+        logger.error(f"[FLW] Exception in charge_saved_card: {e}")
         return {'success': False, 'error': str(e)}
 
 

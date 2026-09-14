@@ -91,3 +91,52 @@ class WalletLedgerResilienceTest(TestCase):
 
         self.wallet1.refresh_from_db()
         self.assertEqual(self.wallet1.balance, 100.00)
+
+
+class SavedCardFeatureTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="cardholder@example.com", password="password123")
+        self.wallet = Wallet.objects.get(user=self.user)
+
+    def test_detect_card_brand(self):
+        from wallet.flutterwave import detect_card_brand
+        self.assertEqual(detect_card_brand("4111 2222 3333 4444"), "Visa")
+        self.assertEqual(detect_card_brand("5531886652142950"), "Mastercard")
+        self.assertEqual(detect_card_brand("378282246310005"), "American Express")
+        self.assertEqual(detect_card_brand("6011000990139424"), "Discover")
+
+    def test_saved_card_model_creation_and_scoping(self):
+        from wallet.models import SavedCard
+        card = SavedCard.objects.create(
+            user=self.user,
+            customer_id="flw_cust_123",
+            payment_method_id="flw_pm_456",
+            card_brand="Visa",
+            last4="4242",
+            expiry_month="12",
+            expiry_year="2028",
+            is_default=True
+        )
+        self.assertEqual(card.last4, "4242")
+        self.assertTrue(card.is_default)
+        self.assertEqual(SavedCard.objects.filter(user=self.user).count(), 1)
+        self.assertIn("Visa •••• 4242", str(card))
+
+    def test_saved_card_serializer_excludes_sensitive_tokens(self):
+        from wallet.models import SavedCard
+        from wallet.serializers import SavedCardSerializer
+        card = SavedCard.objects.create(
+            user=self.user,
+            customer_id="secret_customer_token",
+            payment_method_id="secret_pm_token",
+            card_brand="Mastercard",
+            last4="5555",
+            expiry_month="08",
+            expiry_year="2027",
+            is_default=True
+        )
+        data = SavedCardSerializer(card).data
+        self.assertIn("last4", data)
+        self.assertIn("card_brand", data)
+        self.assertNotIn("customer_id", data)
+        self.assertNotIn("payment_method_id", data)

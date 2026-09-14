@@ -8,7 +8,7 @@ from .views import (
     EmailAuthTokenView, mobile_callback_view,
     FundCampaignViewSet, OrganisationViewSet,
     RequestOTPView, VerifyOTPView, CheckPhoneStatusView,
-    VerifyPINView, SetPINView,
+    VerifyPINView, SetPINView, VerifyCurrentPINView,
 )
 
 router = DefaultRouter()
@@ -37,6 +37,7 @@ urlpatterns = [
     path('auth/request-otp/', RequestOTPView.as_view(), name='request_otp'),
     path('auth/verify-otp/', VerifyOTPView.as_view(), name='verify_otp'),
     path('auth/verify-pin/', VerifyPINView.as_view(), name='verify_pin'),
+    path('auth/verify-current-pin/', VerifyCurrentPINView.as_view(), name='verify_current_pin'),
     path('auth/set-pin/', SetPINView.as_view(), name='set_pin'),
     path('auth-token/', EmailAuthTokenView.as_view(), name='auth_token'),
     path('password-reset/', password_reset_request, name='api_password_reset'),

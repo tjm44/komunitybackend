@@ -500,3 +500,28 @@ class InsurancePolicyEnrollment(models.Model):
         return f"{self.group.name} enrolled in {self.policy.policy_name} ({self.enrolled_members_count} members)"
 
 
+class SavedCard(models.Model):
+    """
+    Secure tokenized payment card representation for a user.
+    Adheres strictly to PCI-DSS: NEVER stores raw card number or CVV.
+    Stores gateway token references along with safe display information.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_cards')
+    customer_id = models.CharField(max_length=120, help_text="Flutterwave/Gateway customer ID")
+    payment_method_id = models.CharField(max_length=120, help_text="Flutterwave/Gateway tokenized payment method ID")
+    card_brand = models.CharField(max_length=50, default='Visa', help_text="Card brand e.g. Visa, Mastercard")
+    last4 = models.CharField(max_length=4, help_text="Last 4 digits of card")
+    expiry_month = models.CharField(max_length=2, help_text="MM")
+    expiry_year = models.CharField(max_length=4, help_text="YY or YYYY")
+    cardholder_name = models.CharField(max_length=150, blank=True, null=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        return f"{self.card_brand} •••• {self.last4} ({self.user})"
+
+
