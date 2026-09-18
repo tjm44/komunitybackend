@@ -35,32 +35,54 @@ def send_push_notification(user, title, message, data=None, notification_type=No
     if not tokens:
         return
 
-    if not PushClient:
-        logger.info("PushClient not available. Skipping notification.")
-        return
-
+    # Try offloading network I/O to django-q async task
+    dispatched_async = False
     try:
-        messages = [
-            PushMessage(to=token, title=title, body=message, data=data)
-            for token in tokens
-        ]
-        responses = PushClient().publish_multiple(messages)
-
-        for token, response_ticket in zip(tokens, responses):
-            try:
-                response_ticket.validate_response()
-            except Exception as exc:
-                exc_str = str(exc)
-                if (DeviceNotRegisteredError and isinstance(exc, DeviceNotRegisteredError)) or "DeviceNotRegistered" in exc_str:
-                    logger.info(f"Deactivating unregistered device token: {token}")
-                    DeviceToken.objects.filter(token=token).update(is_active=False)
-                else:
-                    logger.warning(f"Push notification ticket error for token {token}: {exc}")
-
+        from django_q.tasks import async_task
+        async_task(
+            'user.tasks.task_deliver_push_and_whatsapp',
+            user.id,
+            tokens,
+            title,
+            message,
+            data,
+            notification_type
+        )
+        dispatched_async = True
     except Exception as exc:
-        logger.error(f"Error sending push notification batch: {exc}")
+        logger.debug(f"Async notification dispatch skipped ({exc}); delivering synchronously.")
 
-    # 3. Optional WhatsApp notification dispatch
+    if not dispatched_async:
+        _deliver_push_and_whatsapp_sync(user, tokens, title, message, data, notification_type)
+
+
+def _deliver_push_and_whatsapp_sync(user, tokens, title, message, data=None, notification_type=None):
+    """
+    Synchronous fallback for push and WhatsApp delivery.
+    """
+    if tokens and PushClient:
+        try:
+            messages = [
+                PushMessage(to=token, title=title, body=message, data=data or {})
+                for token in tokens
+            ]
+            responses = PushClient().publish_multiple(messages)
+
+            for token, response_ticket in zip(tokens, responses):
+                try:
+                    response_ticket.validate_response()
+                except Exception as exc:
+                    exc_str = str(exc)
+                    if (DeviceNotRegisteredError and isinstance(exc, DeviceNotRegisteredError)) or "DeviceNotRegistered" in exc_str:
+                        logger.info(f"Deactivating unregistered device token: {token}")
+                        DeviceToken.objects.filter(token=token).update(is_active=False)
+                    else:
+                        logger.warning(f"Push notification ticket error for token {token}: {exc}")
+
+        except Exception as exc:
+            logger.error(f"Error sending push notification batch: {exc}")
+
+    # Optional WhatsApp notification dispatch
     try:
         dispatch_whatsapp_notification(user, title, message, data=data, notification_type=notification_type)
     except Exception as exc:

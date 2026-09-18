@@ -373,3 +373,40 @@ class SavedCardSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'card_brand', 'last4', 'expiry_month', 'expiry_year', 'created_at']
 
 
+class PlatformFeeConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlatformFeeConfig
+        fields = [
+            'id', 'is_fees_enabled',
+            'topup_percentage_fee', 'topup_flat_fee',
+            'withdrawal_percentage_fee', 'withdrawal_flat_fee',
+            'group_transfer_percentage_fee', 'group_transfer_flat_fee',
+            # SARS Tax & VAT
+            'is_vat_registered', 'vat_percentage', 'vat_pricing_mode',
+            'vat_registration_number', 'sars_tax_number',
+            'registered_business_name', 'registered_business_address',
+            'tax_year_end_month', 'vat_threshold_amount',
+            # Risk & FICA limits
+            'fica_reporting_threshold', 'max_single_payout', 'daily_user_transfer_limit',
+            'admin_alert_email', 'admin_alert_phone', 'is_maintenance_mode',
+            # SaaS & Marketplace
+            'is_saas_subscriptions_enabled', 'group_pro_monthly_price', 'komunity_plus_monthly_price',
+            'is_vendor_marketplace_enabled', 'vendor_commission_percentage',
+            'updated_at'
+        ]
+
+
+class PlatformFeeLedgerSerializer(serializers.ModelSerializer):
+    fee_type_display = serializers.CharField(source='get_fee_type_display', read_only=True)
+
+    class Meta:
+        model = PlatformFeeLedger
+        fields = [
+            'id', 'transaction', 'fee_type', 'fee_type_display',
+            'gross_amount', 'fee_amount', 'net_amount',
+            'vat_rate_applied', 'vat_amount', 'net_fee_amount', 'tax_year',
+            'created_at'
+        ]
+
+
+

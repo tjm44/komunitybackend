@@ -1,0 +1,13 @@
+# ============================================================
+# Komunity Backend — Development Dependencies
+# ============================================================
+-r requirements.txt
+
+# --- Live Reload & DX ---
+django-browser-reload
+
+# --- Environment & Packaging Tools ---
+pipenv==2023.2.4
+platformdirs==3.0.0
+distlib==0.3.6
+filelock==3.9.0

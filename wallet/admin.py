@@ -43,10 +43,50 @@ class GroupWalletTransferRequestAdmin(admin.ModelAdmin):
 @admin.register(PlatformFeeConfig)
 class PlatformFeeConfigAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'is_fees_enabled',
+        'id', 'is_fees_enabled', 'is_vat_registered', 'vat_percentage',
         'is_saas_subscriptions_enabled', 'group_pro_monthly_price',
         'is_vendor_marketplace_enabled', 'vendor_commission_percentage',
-        'updated_at'
+        'is_maintenance_mode', 'updated_at'
+    )
+    fieldsets = (
+        ('Transaction Fees', {
+            'fields': (
+                'is_fees_enabled',
+                ('topup_percentage_fee', 'topup_flat_fee'),
+                ('withdrawal_percentage_fee', 'withdrawal_flat_fee'),
+                ('group_transfer_percentage_fee', 'group_transfer_flat_fee'),
+            )
+        }),
+        ('SARS & Tax Compliance', {
+            'fields': (
+                'is_vat_registered',
+                ('vat_percentage', 'vat_pricing_mode'),
+                ('vat_registration_number', 'sars_tax_number'),
+                ('registered_business_name', 'tax_year_end_month'),
+                'registered_business_address',
+                'vat_threshold_amount',
+            )
+        }),
+        ('Platform Safety & FICA AML Limits', {
+            'fields': (
+                ('fica_reporting_threshold', 'max_single_payout'),
+                'daily_user_transfer_limit',
+                ('admin_alert_email', 'admin_alert_phone'),
+                'is_maintenance_mode',
+            )
+        }),
+        ('Phase 2: SaaS Subscriptions', {
+            'fields': (
+                'is_saas_subscriptions_enabled',
+                ('group_pro_monthly_price', 'komunity_plus_monthly_price'),
+            )
+        }),
+        ('Phase 3: Vendor Marketplace', {
+            'fields': (
+                'is_vendor_marketplace_enabled',
+                'vendor_commission_percentage',
+            )
+        }),
     )
     
     def has_add_permission(self, request):
@@ -56,8 +96,9 @@ class PlatformFeeConfigAdmin(admin.ModelAdmin):
 
 @admin.register(PlatformFeeLedger)
 class PlatformFeeLedgerAdmin(admin.ModelAdmin):
-    list_display = ('fee_type', 'gross_amount', 'fee_amount', 'net_amount', 'created_at')
-    list_filter = ('fee_type', 'created_at')
+    list_display = ('fee_type', 'gross_amount', 'fee_amount', 'vat_amount', 'net_fee_amount', 'tax_year', 'created_at')
+    list_filter = ('fee_type', 'tax_year', 'created_at')
+    search_fields = ('tax_year', 'transaction__waas_reference_id')
     readonly_fields = ('created_at',)
 
 @admin.register(SMSCreditPackage)

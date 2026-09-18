@@ -16,19 +16,37 @@
     <div class="kpi-label">Total Credits Sold</div>
     <div class="kpi-value">{{ total_credits_sold }}</div>
     <div class="kpi-sub">Across all packages</div>
-    <div class="kpi-icon">📨</div>
+    <div class="kpi-icon" title="Credits Sold">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 2L11 13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card success">
     <div class="kpi-label">SMS Revenue</div>
     <div class="kpi-value money">{{ total_sms_revenue|floatformat:2 }}</div>
     <div class="kpi-sub">All-time package sales</div>
-    <div class="kpi-icon">💵</div>
+    <div class="kpi-icon" title="SMS Revenue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="6" width="20" height="12" rx="2"/>
+        <circle cx="12" cy="12" r="2"/>
+        <path d="M6 12h.01M18 12h.01"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card cyan">
     <div class="kpi-label">Active Packages</div>
     <div class="kpi-value">{{ packages|length }}</div>
     <div class="kpi-sub">Credit bundles available</div>
-    <div class="kpi-icon">📦</div>
+    <div class="kpi-icon" title="Active Packages">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="16.5 9.4 7.55 4.24"/>
+        <polyline points="3.29 7 12 12 20.71 7"/>
+        <line x1="12" y1="22" x2="12" y2="12"/>
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+      </svg>
+    </div>
   </div>
 </div>
 
@@ -36,7 +54,7 @@
 
   <!-- ── SMS Packages ──────────────────────────────────── -->
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">📦 SMS Credit Packages</span></div>
+    <div class="panel-header"><span class="panel-title"><span class="panel-icon-badge" style="margin-right:6px;">📦</span> SMS Credit Packages</span></div>
     <div class="table-wrap">
       <table class="dash-table">
         <thead><tr><th>Name</th><th>Credits</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>

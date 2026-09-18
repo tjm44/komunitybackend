@@ -32,13 +32,17 @@ class PhoneOTPTestCase(TestCase):
         user = CustomUser.objects.create_user(phone='+254799887766')
         self.assertFalse(user.has_pin)
 
-        # 2. Set PIN
+        # 2. Set PIN (requires authenticated user)
+        self.client.force_authenticate(user=user)
         url_set = reverse('set_pin')
         res_set = self.client.post(url_set, {'phone': '+254799887766', 'pin': '4321'}, format='json')
         self.assertEqual(res_set.status_code, status.HTTP_200_OK)
 
         user.refresh_from_db()
         self.assertTrue(user.has_pin)
+
+        # Logout before testing verify_pin (which is an unauthenticated endpoint)
+        self.client.force_authenticate(user=None)
 
         # 3. Verify incorrect PIN
         url_ver_pin = reverse('verify_pin')

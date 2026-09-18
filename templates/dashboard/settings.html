@@ -3,28 +3,257 @@
 {% block breadcrumb %}Settings{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex align-center justify-between" style="flex-wrap:wrap;gap:16px;">
   <div>
     <h1 class="page-title">Platform Settings</h1>
-    <p class="page-subtitle">Fee rates, feature flags, subscription pricing, and vendor commissions · Last saved: {{ config.updated_at|date:"M d, Y H:i" }}</p>
+    <p class="page-subtitle">Global transaction fees, SARS tax compliance, FICA limits, and monetization feature flags · Last updated: {{ config.updated_at|date:"M d, Y H:i" }}</p>
+  </div>
+  <div class="d-flex align-center gap-2">
+    {% if config.is_maintenance_mode %}
+      <span class="badge badge-danger">🚨 Maintenance Mode Active</span>
+    {% endif %}
+    {% if config.is_vat_registered %}
+      <span class="badge badge-success">✓ SARS VAT Registered</span>
+    {% else %}
+      <span class="badge badge-info">SARS VAT Exempt (Turnover &lt; R1M)</span>
+    {% endif %}
   </div>
 </div>
 
-<!-- ── SECTION 1: Platform Fees ─────────────────────────── -->
+<!-- ── HERO: SARS VAT Threshold & Compliance Monitor ────────────────── -->
+<div class="panel mb-3" style="border-left: 4px solid var(--cyan);">
+  <div class="panel-header d-flex align-center justify-between">
+    <div class="d-flex align-center gap-2">
+      <span class="section-icon-badge">🏛️</span>
+      <span class="panel-title">SARS Compulsory VAT Registration Monitor</span>
+      {% if config.is_vat_registered %}
+        <span class="badge badge-success">Active VAT Vendor</span>
+      {% elif vat_progress_pct >= 80 %}
+        <span class="badge badge-warning">Approaching R1M Threshold</span>
+      {% else %}
+        <span class="badge badge-info">Voluntary Threshold Band</span>
+      {% endif %}
+    </div>
+    <span class="text-small text-muted">Section 23, South African VAT Act (No. 89 of 1991)</span>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:16px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label">Rolling 12-Month Revenue</div>
+        <div class="kpi-value money" style="font-size:22px;margin:6px 0;">{{ rolling_revenue|floatformat:2 }}</div>
+        <div class="kpi-sub">Total platform fees in past 365 days</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label">Compulsory VAT Threshold</div>
+        <div class="kpi-value money" style="font-size:22px;margin:6px 0;">{{ vat_threshold|floatformat:2 }}</div>
+        <div class="kpi-sub">Mandatory registration within 21 days</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label">Current Tax Year ({{ current_tax_year }})</div>
+        <div class="kpi-value money" style="font-size:22px;margin:6px 0;">{{ tax_year_stats.total_fee|default:"0.00"|floatformat:2 }}</div>
+        <div class="kpi-sub">{{ tax_year_stats.count|default:0 }} fee transactions recorded</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label">Ex-VAT Net Platform Income</div>
+        <div class="kpi-value money" style="font-size:22px;margin:6px 0;">{{ tax_year_stats.total_net|default:"0.00"|floatformat:2 }}</div>
+        <div class="kpi-sub">Output VAT: R {{ tax_year_stats.total_vat|default:"0.00"|floatformat:2 }}</div>
+      </div>
+    </div>
+
+    <!-- Threshold Progress Bar -->
+    <div class="progress-container">
+      <div class="d-flex justify-between text-small" style="margin-bottom:4px;">
+        <span><strong>Turnover Progress:</strong> {{ vat_progress_pct }}% of R {{ vat_threshold|floatformat:0 }} Threshold</span>
+        <span class="text-muted">Status: {% if config.is_vat_registered %}Registered (Charging 15% Output VAT){% else %}Exempt (Turnover &lt; R1,000,000/yr){% endif %}</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill {% if vat_progress_pct > 75 %}warning{% endif %}" style="width: {{ vat_progress_pct }}%;"></div>
+      </div>
+      <div class="progress-meta">
+        <span>R 0.00</span>
+        <span>R {{ rolling_revenue|floatformat:2 }} Current Rolling Revenue</span>
+        <span>R {{ vat_threshold|floatformat:0 }} SARS Threshold</span>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--text-secondary);margin-top:10px;line-height:1.5;">
+      💡 <em>Under South African tax legislation, platforms with commercial fee turnover under R1 million are not legally required to charge or remit VAT. However, all ledger entries in Komunity now maintain an ex-VAT net income audit trail so when registration occurs, your VAT201 returns and corporate income tax filings will be automated seamlessly.</em>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 1: SARS & Tax Compliance Settings ─────────────── -->
+<div class="fee-section">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_tax">
+
+    <div class="fee-section-title">
+      <span class="section-icon-badge">🏛️</span>
+      <span>SARS &amp; Tax Configuration</span>
+      {% if config.is_vat_registered %}<span class="badge badge-success">VAT Active (15%)</span>{% else %}<span class="badge badge-info">VAT Inactive</span>{% endif %}
+    </div>
+
+    <div class="toggle-big">
+      <div class="toggle-big-info">
+        <div class="toggle-big-label">Enable SARS VAT Vendor Mode</div>
+        <div class="toggle-big-desc">Activate this when Komunity has been registered as a VAT Vendor with SARS. Automatically applies 15% output VAT breakdown on all platform fees.</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" name="is_vat_registered" {% if config.is_vat_registered %}checked{% endif %}>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="fee-grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+      <div class="form-group">
+        <label class="form-label">Standard VAT Rate (%)</label>
+        <input type="number" step="0.01" name="vat_percentage" class="form-control"
+               value="{{ config.vat_percentage }}" min="0" max="50">
+        <span class="text-small text-muted">South Africa standard rate is 15.00%</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">VAT Pricing Treatment</label>
+        <select name="vat_pricing_mode" class="form-control">
+          <option value="INCLUSIVE" {% if config.vat_pricing_mode == 'INCLUSIVE' %}selected{% endif %}>Inclusive (Fee includes 15% VAT)</option>
+          <option value="EXCLUSIVE" {% if config.vat_pricing_mode == 'EXCLUSIVE' %}selected{% endif %}>Exclusive (15% VAT added on fee)</option>
+        </select>
+        <span class="text-small text-muted">Inclusive is standard consumer practice</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">SARS VAT Registration Number</label>
+        <input type="text" name="vat_registration_number" class="form-control"
+               value="{{ config.vat_registration_number }}" placeholder="e.g. 4012345678" maxlength="20">
+        <span class="text-small text-muted">10-digit SARS vendor registration number</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">SARS Corporate Tax Reference</label>
+        <input type="text" name="sars_tax_number" class="form-control"
+               value="{{ config.sars_tax_number }}" placeholder="e.g. 9876543210" maxlength="20">
+        <span class="text-small text-muted">Income Tax reference for annual returns</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Corporate Tax Year End Month</label>
+        <select name="tax_year_end_month" class="form-control">
+          <option value="2" {% if config.tax_year_end_month == 2 %}selected{% endif %}>February (Standard SA Tax Year)</option>
+          <option value="3" {% if config.tax_year_end_month == 3 %}selected{% endif %}>March</option>
+          <option value="6" {% if config.tax_year_end_month == 6 %}selected{% endif %}>June</option>
+          <option value="12" {% if config.tax_year_end_month == 12 %}selected{% endif %}>December</option>
+        </select>
+        <span class="text-small text-muted">Determines financial audit year boundaries</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">SARS Compulsory Threshold (R)</label>
+        <input type="number" step="1000" name="vat_threshold_amount" class="form-control"
+               value="{{ config.vat_threshold_amount }}" min="0">
+        <span class="text-small text-muted">Statutory threshold (Default: R1,000,000)</span>
+      </div>
+
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label class="form-label">Registered Legal Business Name</label>
+        <input type="text" name="registered_business_name" class="form-control"
+               value="{{ config.registered_business_name }}" placeholder="Komunity (Pty) Ltd">
+      </div>
+
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label class="form-label">Registered Physical / Tax Address</label>
+        <textarea name="registered_business_address" class="form-control" rows="2"
+                  placeholder="Official legal business address required for tax invoices">{{ config.registered_business_address }}</textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">💾 Save Tax &amp; SARS Settings</button>
+  </form>
+</div>
+
+<!-- ── SECTION 2: Platform Safety & FICA Risk Limits ─────────── -->
+<div class="fee-section">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_limits">
+
+    <div class="fee-section-title">
+      <span class="section-icon-badge" style="background:linear-gradient(135deg,rgba(239,68,68,0.2),rgba(245,158,11,0.2));border-color:rgba(239,68,68,0.4);box-shadow:0 0 12px rgba(239,68,68,0.3);">🛡️</span>
+      <span>Platform Safety, FICA &amp; Risk Controls</span>
+      {% if config.is_maintenance_mode %}<span class="badge badge-danger">Emergency Mode</span>{% else %}<span class="badge badge-success">Systems Normal</span>{% endif %}
+    </div>
+
+    <div class="toggle-big" style="border-color: rgba(239, 68, 68, 0.3);">
+      <div class="toggle-big-info">
+        <div class="toggle-big-label text-danger">Emergency Maintenance Mode</div>
+        <div class="toggle-big-desc">Temporarily freeze all outbound group wallet payouts and external withdrawals for emergency compliance or database operations.</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" name="is_maintenance_mode" {% if config.is_maintenance_mode %}checked{% endif %}>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="fee-grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+      <div class="form-group">
+        <label class="form-label">FICA Cash Reporting Threshold (R)</label>
+        <input type="number" step="100" name="fica_reporting_threshold" class="form-control"
+               value="{{ config.fica_reporting_threshold }}" min="0">
+        <span class="text-small text-muted">Transactions &ge; this trigger audit alerts ({{ fica_flagged_tx_count }} flagged)</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Maximum Single Payout (R)</label>
+        <input type="number" step="100" name="max_single_payout" class="form-control"
+               value="{{ config.max_single_payout }}" min="0">
+        <span class="text-small text-muted">Hard cap for any single withdrawal</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Daily User Disbursal Limit (R)</label>
+        <input type="number" step="100" name="daily_user_transfer_limit" class="form-control"
+               value="{{ config.daily_user_transfer_limit }}" min="0">
+        <span class="text-small text-muted">Rolling 24-hour limit per user wallet</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Compliance Alert Email</label>
+        <input type="email" name="admin_alert_email" class="form-control"
+               value="{{ config.admin_alert_email }}" placeholder="compliance@komunity.co.za">
+        <span class="text-small text-muted">Destination for FICA threshold and risk alerts</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Urgent Treasury Mobile Phone</label>
+        <input type="tel" name="admin_alert_phone" class="form-control"
+               value="{{ config.admin_alert_phone }}" placeholder="+27 82 123 4567">
+        <span class="text-small text-muted">Urgent SMS notices for large payouts</span>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">💾 Save Risk &amp; Safety Limits</button>
+  </form>
+</div>
+
+<!-- ── SECTION 3: Platform Fees ─────────────────────────── -->
 <div class="fee-section">
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="save_fees">
 
     <div class="fee-section-title">
-      💰 Transaction Fee Configuration
+      <span class="section-icon-badge" style="background:linear-gradient(135deg,rgba(16,185,129,0.2),rgba(52,211,153,0.2));border-color:rgba(16,185,129,0.4);box-shadow:0 0 12px rgba(16,185,129,0.3);">💰</span>
+      <span>Transaction Fee Configuration</span>
       {% if config.is_fees_enabled %}<span class="badge badge-success">Fees Active</span>{% else %}<span class="badge badge-danger">Fees Disabled</span>{% endif %}
     </div>
 
     <div class="toggle-big">
       <div class="toggle-big-info">
         <div class="toggle-big-label">Enable Platform Fees</div>
-        <div class="toggle-big-desc">Master switch — disabling this skips all fee calculations on every transaction</div>
+        <div class="toggle-big-desc">Master switch — disabling this skips all platform fee deductions on wallet top-ups, payouts, and transfers</div>
       </div>
       <label class="toggle-switch">
         <input type="checkbox" name="is_fees_enabled" {% if config.is_fees_enabled %}checked{% endif %}>
@@ -69,21 +298,22 @@
   </form>
 </div>
 
-<!-- ── SECTION 2: SaaS Subscriptions ────────────────────── -->
+<!-- ── SECTION 4: SaaS Subscriptions ────────────────────── -->
 <div class="fee-section">
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="save_saas">
 
     <div class="fee-section-title">
-      🎫 SaaS Subscriptions — Phase 2
+      <span class="section-icon-badge" style="background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(168,85,247,0.2));border-color:rgba(139,92,246,0.4);box-shadow:0 0 12px rgba(139,92,246,0.3);">🎫</span>
+      <span>SaaS Subscriptions — Phase 2</span>
       {% if config.is_saas_subscriptions_enabled %}<span class="badge badge-success">Enabled</span>{% else %}<span class="badge badge-muted">Disabled</span>{% endif %}
     </div>
 
     <div class="toggle-big">
       <div class="toggle-big-info">
         <div class="toggle-big-label">Enable SaaS Subscriptions</div>
-        <div class="toggle-big-desc">Group Pro tiers and individual Komunity Plus badges</div>
+        <div class="toggle-big-desc">Group Pro recurring tiers and individual Komunity Plus profile badges</div>
       </div>
       <label class="toggle-switch">
         <input type="checkbox" name="is_saas_subscriptions_enabled" {% if config.is_saas_subscriptions_enabled %}checked{% endif %}>
@@ -108,21 +338,22 @@
   </form>
 </div>
 
-<!-- ── SECTION 3: Vendor Marketplace ────────────────────── -->
+<!-- ── SECTION 5: Vendor Marketplace ────────────────────── -->
 <div class="fee-section">
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="save_vendors">
 
     <div class="fee-section-title">
-      🏪 Vendor Marketplace — Phase 3
+      <span class="section-icon-badge" style="background:linear-gradient(135deg,rgba(249,115,22,0.2),rgba(251,146,60,0.2));border-color:rgba(249,115,22,0.4);box-shadow:0 0 12px rgba(249,115,22,0.3);">🏪</span>
+      <span>Vendor Marketplace — Phase 3</span>
       {% if config.is_vendor_marketplace_enabled %}<span class="badge badge-success">Enabled</span>{% else %}<span class="badge badge-muted">Disabled</span>{% endif %}
     </div>
 
     <div class="toggle-big">
       <div class="toggle-big-info">
         <div class="toggle-big-label">Enable Vendor Marketplace</div>
-        <div class="toggle-big-desc">B2B service vendor marketplace and micro-insurance products</div>
+        <div class="toggle-big-desc">B2B funeral parlors, caterers, florists, and micro-insurance integrations</div>
       </div>
       <label class="toggle-switch">
         <input type="checkbox" name="is_vendor_marketplace_enabled" {% if config.is_vendor_marketplace_enabled %}checked{% endif %}>
@@ -132,7 +363,7 @@
 
     <div class="fee-grid">
       <div class="form-group">
-        <label class="form-label">Vendor Commission % </label>
+        <label class="form-label">Vendor Commission (%)</label>
         <input type="number" step="0.01" name="vendor_commission_percentage" class="form-control"
                value="{{ config.vendor_commission_percentage }}" min="0" max="100">
       </div>
@@ -142,9 +373,15 @@
   </form>
 </div>
 
-<!-- ── SECTION 4: Current Config Summary ────────────────── -->
+<!-- ── SECTION 6: Current Config Summary ────────────────── -->
 <div class="panel">
-  <div class="panel-header"><span class="panel-title">📋 Current Configuration Summary</span></div>
+  <div class="panel-header d-flex align-center justify-between">
+    <div class="d-flex align-center gap-2">
+      <span class="section-icon-badge" style="background:linear-gradient(135deg,rgba(59,130,246,0.2),rgba(96,165,250,0.2));border-color:rgba(59,130,246,0.4);box-shadow:0 0 12px rgba(59,130,246,0.3);">📋</span>
+      <span class="panel-title">Current Active Configuration Summary</span>
+    </div>
+    <span class="text-small text-muted">All active platform parameters</span>
+  </div>
   <div class="panel-body">
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
 
@@ -164,13 +401,25 @@
       </div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
-        <div class="kpi-label" style="margin-bottom:8px;">Group Pro Price</div>
-        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">R{{ config.group_pro_monthly_price }}/mo</div>
+        <div class="kpi-label" style="margin-bottom:8px;">SARS VAT Status</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text-primary);">
+          {% if config.is_vat_registered %}Registered ({{ config.vat_percentage }}% {{ config.vat_pricing_mode }}){% else %}Exempt (Below R1M){% endif %}
+        </div>
       </div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
-        <div class="kpi-label" style="margin-bottom:8px;">Komunity Plus Price</div>
-        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">R{{ config.komunity_plus_monthly_price }}/mo</div>
+        <div class="kpi-label" style="margin-bottom:8px;">FICA Reporting Limit</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">R {{ config.fica_reporting_threshold|floatformat:2 }}</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label" style="margin-bottom:8px;">Max Single Payout</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">R {{ config.max_single_payout|floatformat:2 }}</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
+        <div class="kpi-label" style="margin-bottom:8px;">Group Pro Price</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">R{{ config.group_pro_monthly_price }}/mo</div>
       </div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">

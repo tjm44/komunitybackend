@@ -551,11 +551,38 @@ class FinanceView(View):
             status='PENDING'
         ).select_related('group', 'recipient_profile').order_by('-created_at')
 
+        # SARS Tax & VAT Metrics
+        config = PlatformFeeConfig.get_config()
+        total_vat = PlatformFeeLedger.objects.aggregate(total=Sum('vat_amount'))['total'] or Decimal('0.00')
+        total_net_revenue = PlatformFeeLedger.objects.aggregate(total=Sum('net_fee_amount'))['total'] or Decimal('0.00')
+        
+        now = timezone.now()
+        twelve_months_ago = now - timezone.timedelta(days=365)
+        rolling_12m_revenue = PlatformFeeLedger.objects.filter(
+            created_at__gte=twelve_months_ago
+        ).aggregate(total=Sum('fee_amount'))['total'] or Decimal('0.00')
+        
+        vat_threshold = config.vat_threshold_amount or Decimal('1000000.00')
+        vat_progress_pct = min(float((rolling_12m_revenue / vat_threshold) * 100), 100.0) if vat_threshold > 0 else 0.0
+
+        end_month = config.tax_year_end_month or 2
+        if now.month <= end_month:
+            current_tax_year = f"{now.year - 1}/{now.year}"
+        else:
+            current_tax_year = f"{now.year}/{now.year + 1}"
+
         context = {
             'page': 'finance',
+            'config': config,
             'treasury_balance': treasury_balance,
             'treasury_transactions': treasury_transactions,
             'total_revenue': total_revenue,
+            'total_vat': total_vat,
+            'total_net_revenue': total_net_revenue,
+            'rolling_12m_revenue': rolling_12m_revenue,
+            'vat_threshold': vat_threshold,
+            'vat_progress_pct': round(vat_progress_pct, 1),
+            'current_tax_year': current_tax_year,
             'revenue_by_type': revenue_by_type,
             'transactions': transactions,
             'fee_ledger': fee_ledger,
@@ -793,10 +820,47 @@ class SettingsView(View):
     def get(self, request):
         config = PlatformFeeConfig.get_config()
         groups = Group.objects.filter(is_active=True).order_by('name')[:100]
+
+        now = timezone.now()
+        # Rolling 12-month revenue calculation for SARS VAT threshold
+        twelve_months_ago = now - timezone.timedelta(days=365)
+        rolling_revenue = PlatformFeeLedger.objects.filter(
+            created_at__gte=twelve_months_ago
+        ).aggregate(total=Sum('fee_amount'))['total'] or Decimal('0.00')
+
+        vat_threshold = config.vat_threshold_amount or Decimal('1000000.00')
+        vat_progress_pct = min(float((rolling_revenue / vat_threshold) * 100), 100.0) if vat_threshold > 0 else 0.0
+
+        # Current SARS Tax Year calculations
+        end_month = config.tax_year_end_month or 2
+        if now.month <= end_month:
+            current_tax_year = f"{now.year - 1}/{now.year}"
+        else:
+            current_tax_year = f"{now.year}/{now.year + 1}"
+
+        tax_year_stats = PlatformFeeLedger.objects.filter(tax_year=current_tax_year).aggregate(
+            total_gross=Sum('gross_amount'),
+            total_fee=Sum('fee_amount'),
+            total_vat=Sum('vat_amount'),
+            total_net=Sum('net_fee_amount'),
+            count=Count('id')
+        )
+
+        fica_flagged_tx_count = Transaction.objects.filter(
+            amount__gte=config.fica_reporting_threshold,
+            status='COMPLETED'
+        ).count()
+
         context = {
             'page': 'settings',
             'config': config,
             'groups': groups,
+            'rolling_revenue': rolling_revenue,
+            'vat_threshold': vat_threshold,
+            'vat_progress_pct': round(vat_progress_pct, 1),
+            'current_tax_year': current_tax_year,
+            'tax_year_stats': tax_year_stats,
+            'fica_flagged_tx_count': fica_flagged_tx_count,
         }
         return render(request, self.template_name, context)
 
@@ -813,6 +877,25 @@ class SettingsView(View):
                 config.withdrawal_flat_fee = Decimal(request.POST.get('withdrawal_flat_fee', '5.00'))
                 config.group_transfer_percentage_fee = Decimal(request.POST.get('group_transfer_percentage_fee', '1.00'))
                 config.group_transfer_flat_fee = Decimal(request.POST.get('group_transfer_flat_fee', '0.00'))
+
+            if action in ('save_tax', 'save_all'):
+                config.is_vat_registered = 'is_vat_registered' in request.POST
+                config.vat_percentage = Decimal(request.POST.get('vat_percentage', '15.00'))
+                config.vat_pricing_mode = request.POST.get('vat_pricing_mode', 'INCLUSIVE')
+                config.vat_registration_number = request.POST.get('vat_registration_number', '').strip()
+                config.sars_tax_number = request.POST.get('sars_tax_number', '').strip()
+                config.registered_business_name = request.POST.get('registered_business_name', 'Komunity (Pty) Ltd').strip()
+                config.registered_business_address = request.POST.get('registered_business_address', '').strip()
+                config.tax_year_end_month = int(request.POST.get('tax_year_end_month', 2))
+                config.vat_threshold_amount = Decimal(request.POST.get('vat_threshold_amount', '1000000.00'))
+
+            if action in ('save_limits', 'save_all'):
+                config.fica_reporting_threshold = Decimal(request.POST.get('fica_reporting_threshold', '25000.00'))
+                config.max_single_payout = Decimal(request.POST.get('max_single_payout', '30000.00'))
+                config.daily_user_transfer_limit = Decimal(request.POST.get('daily_user_transfer_limit', '50000.00'))
+                config.admin_alert_email = request.POST.get('admin_alert_email', '').strip()
+                config.admin_alert_phone = request.POST.get('admin_alert_phone', '').strip()
+                config.is_maintenance_mode = 'is_maintenance_mode' in request.POST
 
             if action in ('save_saas', 'save_all'):
                 config.is_saas_subscriptions_enabled = 'is_saas_subscriptions_enabled' in request.POST

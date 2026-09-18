@@ -16,19 +16,32 @@
     <div class="kpi-label">Commission Revenue</div>
     <div class="kpi-value money">{{ total_booking_revenue|floatformat:2 }}</div>
     <div class="kpi-sub">From completed bookings</div>
-    <div class="kpi-icon">🏪</div>
+    <div class="kpi-icon" title="Commission Revenue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3h18v18H3zM3 9h18M9 21V9"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card accent">
     <div class="kpi-label">Registered Vendors</div>
     <div class="kpi-value">{{ vendors|length }}</div>
     <div class="kpi-sub">Service providers</div>
-    <div class="kpi-icon">🏬</div>
+    <div class="kpi-icon" title="Registered Vendors">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card cyan">
     <div class="kpi-label">Insurance Policies</div>
     <div class="kpi-value">{{ policies|length }}</div>
     <div class="kpi-sub">Available products</div>
-    <div class="kpi-icon">🛡️</div>
+    <div class="kpi-icon" title="Insurance Policies">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
   </div>
 </div>
 
@@ -36,7 +49,7 @@
 
   <!-- ── Vendor List ──────────────────────────────────── -->
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">🏪 Service Vendors</span></div>
+    <div class="panel-header"><span class="panel-title"><span class="panel-icon-badge" style="margin-right:6px;">🏪</span> Service Vendors</span></div>
     <div class="table-wrap">
       <table class="dash-table">
         <thead><tr><th>Name</th><th>Category</th><th>Rating</th><th>Verified</th><th>Status</th><th>Actions</th></tr></thead>

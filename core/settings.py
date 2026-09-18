@@ -11,13 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY: In production this must be set as the SECRET env var on Render.
 # For local dev, fall back to an insecure placeholder — never commit a real secret here.
 SECRET_KEY = os.environ.get(
-    'SECRET',
-    'django-insecure-local-dev-only-replace-in-production'
+    'SECRET_KEY',
+    os.environ.get('SECRET', 'django-insecure-local-dev-only-replace-in-production')
 )
 
 DEBUG = os.environ.get('DJANGO_ENV') != 'production'
 
-_base_hosts = ['127.0.0.1', 'localhost', '192.168.88.245', '192.168.88.243', '192.168.88.236']
+_base_hosts = ['127.0.0.1', 'localhost']
 import socket
 try:
     hostname = socket.gethostname()
@@ -36,6 +36,13 @@ env_hosts = os.environ.get('ALLOWED_HOSTS', '')
 if env_hosts:
     _prod_hosts.extend([h.strip() for h in env_hosts.split(',') if h.strip()])
 
+# EXTRA_ALLOWED_HOSTS lets developers add their own LAN IPs via .env
+# without committing them to source control.
+# e.g. EXTRA_ALLOWED_HOSTS=192.168.1.100,192.168.1.101
+extra_hosts = os.environ.get('EXTRA_ALLOWED_HOSTS', '')
+if extra_hosts:
+    _base_hosts.extend([h.strip() for h in extra_hosts.split(',') if h.strip()])
+
 if DEBUG:
     ALLOWED_HOSTS = ['*']
 else:
@@ -45,8 +52,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://chemaonline.azurewebsites.net',
     'https://127.0.0.1',
     'https://chema.com',
-    'http://192.168.88.245:8000',
-    'http://192.168.88.243:8000',
 ]
 railway_url = os.environ.get('RAILWAY_STATIC_URL')
 if railway_url:
@@ -57,6 +62,12 @@ if env_csrf:
     CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in env_csrf.split(',') if origin.strip()])
 if local_ip:
     CSRF_TRUSTED_ORIGINS.append(f'http://{local_ip}:8000')
+
+# EXTRA_CSRF_ORIGINS for developer LAN origins — set in .env, not committed.
+# e.g. EXTRA_CSRF_ORIGINS=http://192.168.1.100:8000
+extra_csrf = os.environ.get('EXTRA_CSRF_ORIGINS', '')
+if extra_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([o.strip() for o in extra_csrf.split(',') if o.strip()])
 
 
 INSTALLED_APPS = [
@@ -85,7 +96,25 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.facebook',
     'dj_rest_auth',
     'dj_rest_auth.registration',
+    'crispy_forms',
+    'crispy_tailwind',
 ]
+
+# Register django-storages only if installed (required for Cloudflare R2 in production)
+try:
+    import storages  # noqa: F401
+    INSTALLED_APPS += ['storages']
+except ImportError:
+    pass
+
+# Background task queue (django-q2)
+# Workers are started with: python manage.py qcluster
+# On VPS: run qcluster as a systemd service alongside gunicorn.
+try:
+    import django_q  # noqa: F401
+    INSTALLED_APPS += ['django_q']
+except ImportError:
+    pass
 
 AUTH_USER_MODEL = 'user.CustomUser'
 
@@ -324,4 +353,28 @@ FERNET_KEY = os.environ.get('FERNET_KEY', '')
 WHATSAPP_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_PHONE_NUMBER_ID', '')
 WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
 WHATSAPP_BUSINESS_ACCOUNT_ID = os.environ.get('WHATSAPP_BUSINESS_ACCOUNT_ID', '')
+
+# ------------------------------------------------------------------
+# Django-Q2: Background Task Queue
+# ------------------------------------------------------------------
+# Workers are started with:  python manage.py qcluster
+#
+# On the VPS run qcluster as a separate process/systemd service.
+# For Railway/Render, add a second service running:
+#   python manage.py qcluster
+#
+# Broker: Django ORM (uses your existing DB — no Redis required).
+# Upgrade to Redis broker later by setting 'redis' key instead.
+# ------------------------------------------------------------------
+Q_CLUSTER = {
+    'name': 'komunity',
+    'workers': 2,           # 2 worker threads per qcluster process
+    'recycle': 500,         # restart worker after 500 tasks (prevents memory leak)
+    'timeout': 90,          # task timeout in seconds (SMS/WhatsApp/Push should finish in <30s)
+    'retry': 120,           # re-queue failed tasks after 120s
+    'max_attempts': 3,      # give up after 3 failed attempts
+    'orm': 'default',       # use Django ORM broker (your existing DB)
+    'ack_failures': True,   # acknowledge failed tasks so they don't block the queue
+    'catch_up': False,      # don't replay missed scheduled tasks on restart
+}
 

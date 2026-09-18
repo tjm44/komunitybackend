@@ -39,26 +39,41 @@ class Wallet(models.Model):
 
     def recalculate_balance(self):
         from decimal import Decimal
-        from django.db.models import Sum, F, Q, DecimalField
+        from django.db.models import Sum, Case, When, DecimalField
         from django.db.models.functions import Coalesce
-        
+
         # Calculate Incoming (Top-Ups + Payouts + Received Transfers + Platform Fee Credits)
-        incoming_txs = self.transactions.filter(
+        # using net_amount if set and positive, otherwise gross amount
+        incoming_res = self.transactions.filter(
             transaction_type__in=['TOP_UP', 'PAYOUT_RECEIVED', 'P2P_RECEIVED', 'PLATFORM_FEE_COLLECTED'],
             status='COMPLETED'
+        ).aggregate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(net_amount__gt=0, then='net_amount'),
+                        default='amount',
+                        output_field=DecimalField(max_digits=12, decimal_places=2)
+                    )
+                ),
+                Decimal('0.00'),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )
-        incoming = Decimal('0.00')
-        for tx in incoming_txs:
-            incoming += (tx.net_amount if tx.net_amount and tx.net_amount > 0 else tx.amount)
+        incoming = incoming_res['total']
 
         # Calculate Outgoing (Transfers + Withdrawals + Sent Transfers) using gross amount
-        outgoing_txs = self.transactions.filter(
+        outgoing_res = self.transactions.filter(
             transaction_type__in=['TRANSFER', 'WITHDRAWAL', 'P2P_SENT', 'SMS_PACKAGE_PURCHASE'],
             status='COMPLETED'
+        ).aggregate(
+            total=Coalesce(
+                Sum('amount'),
+                Decimal('0.00'),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )
-        outgoing = Decimal('0.00')
-        for tx in outgoing_txs:
-            outgoing += tx.amount
+        outgoing = outgoing_res['total']
 
         calculated = incoming - outgoing
         if self.balance != calculated:
@@ -91,11 +106,11 @@ class Transaction(models.Model):
         VOUCHER = 'voucher', 'Voucher Cash-out'
 
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name="transactions")
-    transaction_type = models.CharField(max_length=35, choices=TransactionType.choices)
+    transaction_type = models.CharField(max_length=35, choices=TransactionType.choices, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Platform fee charged on this transaction")
     net_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Net amount after deducting platform fee")
-    status = models.CharField(max_length=20, choices=TransactionStatus.choices, default=TransactionStatus.PENDING)
+    status = models.CharField(max_length=20, choices=TransactionStatus.choices, default=TransactionStatus.PENDING, db_index=True)
     withdrawal_channel = models.CharField(max_length=30, choices=TransactionChannel.choices, blank=True, null=True)
     withdrawal_metadata = models.JSONField(blank=True, null=True)
 
@@ -122,7 +137,14 @@ class Transaction(models.Model):
     idempotency_key = models.CharField(max_length=100, unique=True, null=True, blank=True)
     note = models.CharField(max_length=512, blank=True, null=True, help_text="Human-readable purpose/description of this transaction")
     
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['wallet', 'status', '-timestamp']),
+            models.Index(fields=['transaction_type', 'status']),
+        ]
 
     def __str__(self):
         return f"{self.transaction_type} of {self.amount} for {self.wallet.user} - {self.status}"
@@ -227,8 +249,8 @@ class GroupWalletTransferRequest(models.Model):
             net = gross
 
             if config.is_fees_enabled and gross > 0:
-                pct = config.group_transfer_percentage_fee / Decimal('100.00')
-                flat = config.group_transfer_flat_fee
+                pct = Decimal(str(config.group_transfer_percentage_fee)) / Decimal('100.00')
+                flat = Decimal(str(config.group_transfer_flat_fee))
                 fee = min((gross * pct) + flat, gross).quantize(Decimal('0.01'))
                 net = (gross - fee).quantize(Decimal('0.01'))
 
@@ -247,7 +269,7 @@ class GroupWalletTransferRequest(models.Model):
             recipient_wallet.recalculate_balance()
 
             if fee > 0:
-                PlatformFeeLedger.objects.create(
+                PlatformFeeLedger.record_fee(
                     transaction=transaction,
                     fee_type='GROUP_TRANSFER_FEE',
                     gross_amount=gross,
@@ -288,7 +310,8 @@ class GroupWalletTransferRequest(models.Model):
 
 class PlatformFeeConfig(models.Model):
     """
-    Singleton model for live Django Admin configuration of fee rates across top-ups, withdrawals, and transfers.
+    Singleton model for live Django Admin configuration of fee rates across top-ups, withdrawals, and transfers,
+    as well as SARS VAT compliance, FICA thresholds, and platform risk controls.
     """
     is_fees_enabled = models.BooleanField(default=True, help_text="Global toggle to enable or disable platform fee collection")
     
@@ -300,6 +323,75 @@ class PlatformFeeConfig(models.Model):
 
     group_transfer_percentage_fee = models.DecimalField(max_digits=5, decimal_places=2, default=1.00, help_text="Group disbursement percentage fee (%) e.g. 1.00")
     group_transfer_flat_fee = models.DecimalField(max_digits=8, decimal_places=2, default=0.00, help_text="Flat fee per group disbursement")
+
+    # SARS Tax & VAT Compliance Settings
+    is_vat_registered = models.BooleanField(
+        default=False, 
+        help_text="Enable once Komunity is registered as a VAT Vendor with SARS (Mandatory if turnover exceeds R1,000,000 in 12 months)"
+    )
+    vat_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=15.00, 
+        help_text="Standard South African VAT rate (%)"
+    )
+    vat_pricing_mode = models.CharField(
+        max_length=15, 
+        choices=[
+            ('INCLUSIVE', 'VAT Inclusive (Platform fees include 15% VAT)'),
+            ('EXCLUSIVE', 'VAT Exclusive (15% VAT added on top of fee)'),
+        ],
+        default='INCLUSIVE',
+        help_text="How VAT is factored into platform transaction fees"
+    )
+    vat_registration_number = models.CharField(
+        max_length=20, blank=True, default='', 
+        help_text="SARS 10-digit VAT registration number (e.g. 4012345678)"
+    )
+    sars_tax_number = models.CharField(
+        max_length=20, blank=True, default='', 
+        help_text="SARS Corporate Income Tax reference number"
+    )
+    registered_business_name = models.CharField(
+        max_length=150, default='Komunity (Pty) Ltd', 
+        help_text="Official registered entity name with CIPC and SARS"
+    )
+    registered_business_address = models.TextField(
+        blank=True, default='Johannesburg, Gauteng, South Africa', 
+        help_text="Official legal/tax physical address displayed on invoices and receipts"
+    )
+    tax_year_end_month = models.PositiveSmallIntegerField(
+        default=2, 
+        help_text="SARS Corporate Tax Year End Month (2 = February for standard South African company tax year)"
+    )
+    vat_threshold_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1000000.00, 
+        help_text="SARS Compulsory VAT Registration Threshold (ZAR 1,000,000)"
+    )
+
+    # Operational Safety, FICA & AML Limits
+    fica_reporting_threshold = models.DecimalField(
+        max_digits=12, decimal_places=2, default=25000.00, 
+        help_text="FICA Cash Threshold Reporting (CTR) & high-value transaction alert limit (ZAR)"
+    )
+    max_single_payout = models.DecimalField(
+        max_digits=12, decimal_places=2, default=30000.00, 
+        help_text="Maximum single payout/withdrawal amount allowed per transaction (ZAR)"
+    )
+    daily_user_transfer_limit = models.DecimalField(
+        max_digits=12, decimal_places=2, default=50000.00, 
+        help_text="Maximum daily transfer/payout volume per user wallet (ZAR)"
+    )
+    admin_alert_email = models.EmailField(
+        blank=True, default='', 
+        help_text="Admin email for high-value FICA threshold breaches and reconciliation notices"
+    )
+    admin_alert_phone = models.CharField(
+        max_length=30, blank=True, default='', 
+        help_text="Mobile number for urgent SMS compliance & treasury notifications"
+    )
+    is_maintenance_mode = models.BooleanField(
+        default=False, 
+        help_text="Emergency platform kill-switch / maintenance mode toggle"
+    )
 
     # Phase 2 Feature Flags & Pricing (Group SaaS & Komunity Plus)
     is_saas_subscriptions_enabled = models.BooleanField(default=False, help_text="Phase 2 Toggle: Group SaaS subscriptions & Komunity Plus individual badges")
@@ -322,12 +414,12 @@ class PlatformFeeConfig(models.Model):
         return config
 
     def __str__(self):
-        return f"Platform Fee Config (Fees: {self.is_fees_enabled}, SaaS: {self.is_saas_subscriptions_enabled}, Vendors: {self.is_vendor_marketplace_enabled})"
+        return f"Platform Fee Config (Fees: {self.is_fees_enabled}, VAT Reg: {self.is_vat_registered}, SaaS: {self.is_saas_subscriptions_enabled}, Vendors: {self.is_vendor_marketplace_enabled})"
 
 
 class PlatformFeeLedger(models.Model):
     """
-    Audit ledger tracking all platform monetization fee earnings.
+    Audit ledger tracking all platform monetization fee earnings, complete with SARS VAT breakout and tax year tagging.
     """
     FEE_TYPES = (
         ('TOP_UP_FEE', 'Top-Up Fee'),
@@ -345,10 +437,84 @@ class PlatformFeeLedger(models.Model):
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
     fee_amount = models.DecimalField(max_digits=12, decimal_places=2)
     net_amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    # SARS VAT and Corporate Income Tax tracking
+    vat_rate_applied = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="VAT rate (%) applied at transaction time")
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Output VAT portion of the platform fee owed to SARS")
+    net_fee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Net fee income to Komunity excluding VAT (Gross revenue for Corporate Income Tax)")
+    tax_year = models.CharField(max_length=15, blank=True, default='', help_text="SARS Tax Year (e.g. '2026/2027') for auditing")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @classmethod
+    def record_fee(cls, transaction, fee_type, gross_amount, fee_amount, net_amount=None):
+        """
+        Helper method to record fee into ledger with real-time VAT calculation and tax-year tagging.
+        """
+        from decimal import Decimal
+        from django.utils import timezone
+
+        if fee_amount is None or Decimal(str(fee_amount)) <= Decimal('0.00'):
+            return None
+
+        fee_amount = Decimal(str(fee_amount))
+        gross_amount = Decimal(str(gross_amount))
+        if net_amount is None:
+            net_amount = gross_amount - fee_amount
+        else:
+            net_amount = Decimal(str(net_amount))
+
+        config = PlatformFeeConfig.get_config()
+        vat_rate = Decimal('0.00')
+        vat_amount = Decimal('0.00')
+        net_fee = fee_amount
+
+        if config.is_vat_registered and fee_amount > Decimal('0.00'):
+            vat_rate = config.vat_percentage
+            if config.vat_pricing_mode == 'INCLUSIVE':
+                # Standard South Africa VAT inclusive formula: fee * (15 / 115)
+                vat_amount = (fee_amount * vat_rate / (Decimal('100.00') + vat_rate)).quantize(Decimal('0.01'))
+                net_fee = fee_amount - vat_amount
+            else:
+                vat_amount = (fee_amount * (vat_rate / Decimal('100.00'))).quantize(Decimal('0.01'))
+                net_fee = fee_amount
+
+        now = timezone.now()
+        end_month = config.tax_year_end_month or 2
+        if now.month <= end_month:
+            tax_year_str = f"{now.year - 1}/{now.year}"
+        else:
+            tax_year_str = f"{now.year}/{now.year + 1}"
+
+        return cls.objects.create(
+            transaction=transaction,
+            fee_type=fee_type,
+            gross_amount=gross_amount,
+            fee_amount=fee_amount,
+            net_amount=net_amount,
+            vat_rate_applied=vat_rate,
+            vat_amount=vat_amount,
+            net_fee_amount=net_fee,
+            tax_year=tax_year_str,
+        )
+
+    def save(self, *args, **kwargs):
+        from decimal import Decimal
+        if self.net_fee_amount == Decimal('0.00') and self.fee_amount > Decimal('0.00'):
+            self.net_fee_amount = self.fee_amount - self.vat_amount
+        if not self.tax_year:
+            from django.utils import timezone
+            now = timezone.now()
+            config = PlatformFeeConfig.get_config()
+            end_month = config.tax_year_end_month or 2
+            if now.month <= end_month:
+                self.tax_year = f"{now.year - 1}/{now.year}"
+            else:
+                self.tax_year = f"{now.year}/{now.year + 1}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.get_fee_type_display()}: R{self.fee_amount} on R{self.gross_amount}"
+        return f"{self.get_fee_type_display()}: R{self.fee_amount} (VAT: R{self.vat_amount}) on R{self.gross_amount}"
 
 
 class SMSCreditPackage(models.Model):

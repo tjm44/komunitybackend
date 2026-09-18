@@ -151,6 +151,8 @@ class GroupSerializer(serializers.ModelSerializer):
             'is_selected', 'unread_posts_count', 'membership_status',
             # Fund purpose fields
             'purpose', 'fund_description', 'verified_members_only',
+            # SARS Tax & PBO Status
+            'is_pbo_registered', 'pbo_reference_number', 'is_section_18a_approved',
             # Recurring Contribution settings
             'enable_recurring_contributions', 'recurring_amount', 'recurring_frequency',
             'recurring_due_day', 'recurring_title', 'recurring_reminder_days',

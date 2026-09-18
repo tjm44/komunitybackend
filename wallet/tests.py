@@ -1,34 +1,69 @@
 from django.test import TestCase
-from wallet.flutterwave import get_access_token, charge_voucher, charge_card, initiate_transfer
+from unittest.mock import patch, MagicMock
 import uuid
 
-class FlutterwaveIntegrationTest(TestCase):
-    def test_oauth_token_retrieval(self):
-        try:
-            token = get_access_token()
-            self.assertIsNotNone(token)
-            self.assertTrue(len(token) > 0)
-            print("\n[SUCCESS] OAuth Token retrieved from Flutterwave Sandbox!")
-        except Exception as e:
-            self.fail(f"OAuth Token retrieval failed: {e}")
 
-    def test_voucher_charge_graceful_fail(self):
-        # We test with an invalid pin to make sure the endpoint receives our request
-        # and returns a structured validation/auth response rather than crashing.
+# ---------------------------------------------------------------------------
+# 1.2: Mocked Flutterwave integration tests
+# These tests run OFFLINE — no real HTTP requests are made.
+# The Flutterwave responses are fully deterministic and execute in <1 second.
+# ---------------------------------------------------------------------------
+
+class FlutterwaveIntegrationTest(TestCase):
+
+    @patch('wallet.flutterwave.requests.post')
+    def test_oauth_token_retrieval(self, mock_post):
+        """get_access_token() returns a token from the OAuth response."""
+        from wallet.flutterwave import get_access_token
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'access_token': 'fake-test-token-abc123'}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        token = get_access_token()
+        self.assertEqual(token, 'fake-test-token-abc123')
+        print("\n[MOCKED] OAuth Token retrieval tested.")
+
+    @patch('wallet.flutterwave.requests.post')
+    def test_voucher_charge_graceful_fail(self, mock_post):
+        """charge_voucher() returns {'success': False} on an invalid PIN."""
+        from wallet.flutterwave import charge_voucher
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'error',
+            'message': 'Invalid PIN',
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
         ref = f"test-topup-{uuid.uuid4().hex[:8]}"
         res = charge_voucher(
-            voucher_pin="9999999999999999",  # Mock invalid pin
+            voucher_pin="9999999999999999",
             amount=100.00,
             email="test@komunity.com",
             phone_number="0821234567",
             tx_ref=ref
         )
         self.assertIn('success', res)
-        print(f"\n[SUCCESS] Voucher charge response received: success={res['success']}")
+        self.assertFalse(res['success'])
+        print(f"\n[MOCKED] Voucher charge response received: success={res['success']}")
 
-    def test_card_charge_graceful_fail(self):
+    @patch('wallet.flutterwave.requests.post')
+    def test_card_charge_graceful_fail(self, mock_post):
+        """charge_card() returns {'success': False} on an invalid card number."""
+        from wallet.flutterwave import charge_card
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'error',
+            'message': 'Invalid card number',
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
         ref = f"test-card-{uuid.uuid4().hex[:8]}"
-        # Test with invalid card number in sandbox
         res = charge_card(
             card_number="1111222233334444",
             expiry_month="12",
@@ -40,13 +75,19 @@ class FlutterwaveIntegrationTest(TestCase):
             tx_ref=ref
         )
         self.assertIn('success', res)
-        print(f"\n[SUCCESS] Card charge response received: success={res['success']}")
+        print(f"\n[MOCKED] Card charge response received: success={res['success']}")
+
+
+# ---------------------------------------------------------------------------
+# Wallet ledger and model tests (no external HTTP — already offline)
+# ---------------------------------------------------------------------------
 
 from django.contrib.auth import get_user_model
 from wallet.models import Wallet, Transaction
 from wallet.webhooks import handle_charge_completed
 
 User = get_user_model()
+
 
 class WalletLedgerResilienceTest(TestCase):
     def setUp(self):

@@ -16,25 +16,85 @@
     <div class="kpi-label">Treasury Balance</div>
     <div class="kpi-value money">{{ treasury_balance|floatformat:2 }}</div>
     <div class="kpi-sub">All collected platform fees</div>
-    <div class="kpi-icon">🏦</div>
+    <div class="kpi-icon" title="Treasury Vault">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 21h18M3 10h18M5 10v11M9 10v11M15 10v11M19 10v11M12 2L2 7h20L12 2z"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card success">
     <div class="kpi-label">All-Time Revenue</div>
     <div class="kpi-value money">{{ total_revenue|floatformat:2 }}</div>
     <div class="kpi-sub">Total fee income since launch</div>
-    <div class="kpi-icon">📈</div>
+    <div class="kpi-icon" title="All-Time Revenue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+        <polyline points="17 6 23 6 23 12"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card warning">
     <div class="kpi-label">Pending Transfers</div>
     <div class="kpi-value">{{ pending_transfers|length }}</div>
     <div class="kpi-sub">Awaiting execution or rejection</div>
-    <div class="kpi-icon">⏳</div>
+    <div class="kpi-icon" title="Pending Transfers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </div>
   </div>
   <div class="kpi-card info">
     <div class="kpi-label">Filtered Transactions</div>
     <div class="kpi-value">{{ total_tx }}</div>
     <div class="kpi-sub">Matching current filters</div>
-    <div class="kpi-icon">💳</div>
+    <div class="kpi-icon" title="Filtered Transactions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+        <line x1="1" y1="10" x2="23" y2="10"/>
+        <line x1="6" y1="15" x2="10" y2="15"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ── SARS & Tax Compliance Summary Card ───────────────── -->
+<div class="panel mb-3" style="border-left: 4px solid var(--cyan);">
+  <div class="panel-header d-flex align-center justify-between">
+    <div class="d-flex align-center gap-2">
+      <span class="panel-icon-badge">🏛️</span>
+      <span class="panel-title">SARS Tax &amp; VAT Compliance Overview</span>
+      {% if config.is_vat_registered %}
+        <span class="badge badge-success">VAT Registered (15%)</span>
+      {% else %}
+        <span class="badge badge-info">Voluntary / Under R1M Threshold</span>
+      {% endif %}
+    </div>
+    <a href="{% url 'dashboard:settings' %}" class="btn btn-secondary btn-sm">⚙️ Tax Settings</a>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;">
+        <div class="kpi-label">SARS Tax Year</div>
+        <div style="font-size:18px;font-weight:700;color:var(--cyan-light);margin-top:4px;">{{ current_tax_year }}</div>
+        <div class="text-small text-muted">End Month: {% if config.tax_year_end_month == 2 %}February{% else %}{{ config.tax_year_end_month }}{% endif %}</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;">
+        <div class="kpi-label">Rolling 12M Turnover</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text-primary);margin-top:4px;">R {{ rolling_12m_revenue|floatformat:2 }}</div>
+        <div class="text-small text-muted">{{ vat_progress_pct }}% of R1M mandatory threshold</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;">
+        <div class="kpi-label">Accrued Output VAT</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text-primary);margin-top:4px;">R {{ total_vat|floatformat:2 }}</div>
+        <div class="text-small text-muted">{% if config.is_vat_registered %}Remittable via VAT201{% else %}Non-applicable (Exempt){% endif %}</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;">
+        <div class="kpi-label">Net Platform Revenue (Ex-VAT)</div>
+        <div style="font-size:18px;font-weight:700;color:var(--success);margin-top:4px;">R {{ total_net_revenue|floatformat:2 }}</div>
+        <div class="text-small text-muted">Subject to Corporate Income Tax</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -207,21 +267,36 @@
 
 <!-- ── Fee Ledger ───────────────────────────────────────── -->
 <div class="panel">
-  <div class="panel-header"><span class="panel-title">🧾 Platform Fee Ledger (Recent 20)</span></div>
+  <div class="panel-header d-flex align-center justify-between">
+    <span class="panel-title">🧾 Platform Fee Ledger (Recent 20)</span>
+    <span class="text-small text-muted">Real-time SARS VAT breakout &amp; tax year tagging</span>
+  </div>
   <div class="table-wrap">
     <table class="dash-table">
-      <thead><tr><th>Fee Type</th><th>Gross Amount</th><th>Fee Earned</th><th>Net to User</th><th>Date</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Fee Type</th>
+          <th>Gross Tx</th>
+          <th>Fee Earned</th>
+          <th>Output VAT</th>
+          <th>Net (Ex-VAT)</th>
+          <th>Tax Year</th>
+          <th>Date</th>
+        </tr>
+      </thead>
       <tbody>
         {% for fl in fee_ledger %}
         <tr>
-          <td><span class="badge badge-success">{{ fl.fee_type }}</span></td>
+          <td><span class="badge badge-accent">{{ fl.fee_type }}</span></td>
           <td>R {{ fl.gross_amount|floatformat:2 }}</td>
-          <td class="money">{{ fl.fee_amount|floatformat:2 }}</td>
-          <td class="text-muted">R {{ fl.net_amount|floatformat:2 }}</td>
-          <td class="text-small text-muted">{{ fl.created_at|date:"M d, H:i" }}</td>
+          <td class="money">R {{ fl.fee_amount|floatformat:2 }}</td>
+          <td class="text-small text-muted">{% if fl.vat_amount > 0 %}R {{ fl.vat_amount|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td class="text-small">R {{ fl.net_fee_amount|floatformat:2 }}</td>
+          <td><span class="badge badge-purple">{{ fl.tax_year|default:"2026/2027" }}</span></td>
+          <td class="text-small text-muted nowrap">{{ fl.created_at|date:"M d, H:i" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="5"><div class="empty-state"><div class="empty-state-title">No fee records yet</div></div></td></tr>
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-state-title">No fee records yet</div></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

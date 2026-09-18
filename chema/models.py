@@ -65,6 +65,20 @@ class Group(models.Model):
         help_text="Only allow verified user profiles to join this group"
     )
 
+    # SARS Tax & PBO Exemption Status
+    is_pbo_registered = models.BooleanField(
+        default=False,
+        help_text="Whether this group is a SARS-approved Public Benefit Organisation (PBO)"
+    )
+    pbo_reference_number = models.CharField(
+        max_length=50, blank=True, null=True,
+        help_text="SARS PBO Tax Exemption reference number (e.g. 930012345)"
+    )
+    is_section_18a_approved = models.BooleanField(
+        default=False,
+        help_text="Approved by SARS to issue Section 18A tax-deductible donation receipts"
+    )
+
     # Recurring Contribution Configuration
     enable_recurring_contributions = models.BooleanField(
         default=False,

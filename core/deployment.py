@@ -60,6 +60,42 @@ WHITENOISE_MANIFEST_STRICT = False
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # -------------------------------------------------------------------
+# Media files — Cloudflare R2 (S3-compatible) storage
+# Set these env vars on Railway/Render/Fly:
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+#   R2_BUCKET_NAME, R2_PUBLIC_CUSTOM_DOMAIN (optional CDN domain)
+# If credentials are absent, falls back to local disk (safe for staging).
+# -------------------------------------------------------------------
+_R2_ACCOUNT_ID = os.environ.get('R2_ACCOUNT_ID')
+_R2_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
+_R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
+_R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
+_R2_PUBLIC_DOMAIN = os.environ.get('R2_PUBLIC_CUSTOM_DOMAIN')  # e.g. 'media.komunity.co.za'
+
+if _R2_ACCOUNT_ID and _R2_ACCESS_KEY_ID and _R2_SECRET_ACCESS_KEY and _R2_BUCKET_NAME:
+    # Cloudflare R2 is S3-compatible; use the account-specific endpoint
+    AWS_S3_ENDPOINT_URL = f'https://{_R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
+    AWS_ACCESS_KEY_ID = _R2_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY = _R2_SECRET_ACCESS_KEY
+    AWS_STORAGE_BUCKET_NAME = _R2_BUCKET_NAME
+    AWS_S3_REGION_NAME = 'auto'  # R2 uses 'auto' as the region
+    AWS_DEFAULT_ACL = None       # R2 does not use ACLs; bucket policy controls access
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_QUERYSTRING_AUTH = False  # Public bucket: no signed URLs needed
+    if _R2_PUBLIC_DOMAIN:
+        AWS_S3_CUSTOM_DOMAIN = _R2_PUBLIC_DOMAIN
+
+    # Django 4.2+ STORAGES dict (replaces deprecated DEFAULT_FILE_STORAGE)
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
+
+# -------------------------------------------------------------------
 # Database — Configure via environment DATABASE_URL
 # -------------------------------------------------------------------
 DATABASES = {
