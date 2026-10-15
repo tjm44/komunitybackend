@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'api_v1',
     'dashboard',
+    'crm',
     
     'allauth',
     'allauth.account',

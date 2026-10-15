@@ -1,0 +1,123 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Edit {{ lead.name }} — CRM{% endblock %}
+{% block breadcrumb %}<a href="{% url 'crm:lead_list' %}">CRM</a> › <a href="{% url 'crm:lead_detail' lead.id %}">{{ lead.name }}</a> › Edit{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+        <h1 style="font-size: 22px; font-weight: 800; color: #fff; margin: 0;">Edit Lead Profile</h1>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">{{ lead.name }}</p>
+      </div>
+      <a href="{% url 'crm:lead_detail' lead.id %}" class="btn" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px 12px; border-radius: 6px; font-size: 12px;">
+        Cancel
+      </a>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Community Name</label>
+          {{ form.name }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Lead Type</label>
+          {{ form.lead_type }}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Primary Contact Person</label>
+          {{ form.primary_contact_name }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Phone Number (WhatsApp)</label>
+          {{ form.phone }}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Email (Optional)</label>
+          {{ form.email }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Preferred Channel</label>
+          {{ form.preferred_contact_method }}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Group Type</label>
+          {{ form.community_type }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Area / Location</label>
+          {{ form.area_or_location }}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Estimated Member Count</label>
+          {{ form.estimated_member_count }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Current System / Tool</label>
+          {{ form.current_process_or_tool }}
+        </div>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Main Pain Point</label>
+        {{ form.main_pain_point }}
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Pipeline Stage</label>
+          {{ form.status }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Priority</label>
+          {{ form.priority }}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">POPIA Consent to Contact</label>
+          {{ form.consent_to_contact }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Consent Capture Method</label>
+          {{ form.consent_method }}
+        </div>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--danger); cursor: pointer;">
+          {{ form.do_not_contact }}
+          <span><strong>Do Not Contact (POPIA Opt-out / Blacklist)</strong></span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <a href="{% url 'crm:lead_detail' lead.id %}" class="btn" style="background: rgba(255,255,255,0.06); color: var(--text-secondary); padding: 10px 16px; border-radius: 6px; border: none;">Cancel</a>
+        <button type="submit" class="btn" style="background: var(--accent); color: #fff; padding: 10px 20px; border-radius: 6px; font-weight: 700; border: none; cursor: pointer;">Save Changes</button>
+      </div>
+
+    </form>
+  </div>
+
+</div>
+{% endblock %}

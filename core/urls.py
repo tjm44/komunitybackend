@@ -12,6 +12,7 @@ urlpatterns = [
     path('', include('wallet.urls')),
     path('api/v1/', include('api_v1.urls')),
     path('dashboard/', include('dashboard.urls')),
+    path('dashboard/crm/', include('crm.urls')),
 ]
 
 if settings.DEBUG:

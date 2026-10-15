@@ -1,0 +1,499 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Field Ambassadors — CRM Acquisition{% endblock %}
+{% block breadcrumb %}Ambassadors Onboarding{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ambassador-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .form-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .directory-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .toolkit-card {
+    background: linear-gradient(135deg, rgba(63, 210, 199, 0.12), rgba(0, 92, 179, 0.18));
+    border: 1px solid rgba(63, 210, 199, 0.4);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 30px rgba(0, 69, 139, 0.3);
+  }
+
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cyan);
+    margin-bottom: 6px;
+  }
+
+  .form-input, .form-select, .form-textarea {
+    width: 100%;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: var(--transition);
+  }
+
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px var(--cyan-glow);
+  }
+
+  .help-text {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .error-text {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 4px;
+    font-weight: 600;
+  }
+
+  .amb-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .amb-table th {
+    background: var(--bg-2);
+    padding: 12px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .amb-table td {
+    padding: 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: middle;
+  }
+
+  .amb-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .avatar-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #005cb3, #3fd2c7);
+    color: #fff;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+
+  .badge-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  @media (max-width: 1024px) {
+    .ambassador-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crm-container">
+
+  <!-- Header -->
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+        <h1 style="font-size: 26px; font-weight: 800; color: #fff; margin: 0;">Field Ambassadors</h1>
+        <span class="badge-tag" style="background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.3);">
+          Growth Operations
+        </span>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 14px; margin: 0;">
+        Onboard field agents, provision mobile capture kits, and monitor grassroots acquisition across townships.
+      </p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <a href="{% url 'crm:quick_capture' %}" class="btn" style="background: linear-gradient(135deg, #005cb3, #00458b); color: #fff; padding: 10px 18px; border-radius: var(--radius); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.15);">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Quick Capture (Mobile)
+      </a>
+      <a href="{% url 'crm:lead_list' %}" class="btn" style="background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; border-radius: var(--radius); font-weight: 600; border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        All Leads
+      </a>
+      <a href="{% url 'crm:dashboard' %}" class="btn" style="background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; border-radius: var(--radius); font-weight: 600; border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        CRM Funnel
+      </a>
+    </div>
+  </div>
+
+  <!-- Key Metrics Row -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="stat-card">
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Active Field Ambassadors</div>
+      <div style="font-size: 28px; font-weight: 800; color: #fff; margin: 8px 0 4px;">{{ total_ambassadors }}</div>
+      <div style="font-size: 12px; color: #c084fc;">Scoped to Field Agent role</div>
+    </div>
+
+    <div class="stat-card">
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Total Leads Captured</div>
+      <div style="font-size: 28px; font-weight: 800; color: var(--cyan); margin: 8px 0 4px;">{{ total_leads_all }}</div>
+      <div style="font-size: 12px; color: var(--text-secondary);">Grassroots communities logged</div>
+    </div>
+
+    <div class="stat-card">
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Activated Communities</div>
+      <div style="font-size: 28px; font-weight: 800; color: var(--success); margin: 8px 0 4px;">{{ total_activations_all }}</div>
+      <div style="font-size: 12px; color: var(--text-secondary);">≥ 5 members + active usage</div>
+    </div>
+
+    <div class="stat-card">
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Target Goal</div>
+      <div style="font-size: 28px; font-weight: 800; color: #fbbf24; margin: 8px 0 4px;">5+ Active</div>
+      <div style="font-size: 12px; color: var(--text-secondary);">Per ambassador per month</div>
+    </div>
+  </div>
+
+  <!-- Newly Onboarded Ambassador Toolkit (Alert Modal/Card) -->
+  {% if newly_created %}
+  <div class="toolkit-card" id="welcomeToolkit">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="background: rgba(63, 210, 199, 0.2); border-radius: 999px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 22px;">
+          🎉
+        </div>
+        <div>
+          <h2 style="font-size: 18px; font-weight: 800; color: #fff; margin: 0;">Ambassador Onboarded Successfully!</h2>
+          <p style="font-size: 13px; color: var(--cyan-light); margin: 2px 0 0;">
+            Share this ready-made welcome pack and mobile login credentials with <strong>{{ newly_created.full_name }}</strong>.
+          </p>
+        </div>
+      </div>
+      <button onclick="document.getElementById('welcomeToolkit').style.display='none'" style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 18px;">✕</button>
+    </div>
+
+    <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px; margin-bottom: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap;" id="welcomeMessageText">🌟 Welcome to the Komunity Growth Team, {{ newly_created.full_name }}!
+
+You have been registered as a Field Ambassador for {{ newly_created.territory }}.
+
+📱 Mobile Quick Capture Portal:
+{{ newly_created.quick_capture_url }}
+
+🔑 Your Login Credentials:
+• Username (Phone): {{ newly_created.phone }}
+• Password: {{ newly_created.password }}
+
+🚀 Quick Start Instructions:
+1. Open the Quick Capture link in your phone's browser.
+2. Tap "Add to Home Screen" to install it like an app.
+3. Use it to log stokvel, church, and burial society leads in ~60 seconds.
+4. Remember: Your target is Activated Groups (at least 5 members active in 14 days).
+
+Welcome aboard! 🇿🇦✨</div>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <button onclick="copyToolkitMessage()" class="btn" style="background: var(--cyan); color: #000; font-weight: 700; padding: 10px 18px; border-radius: var(--radius); border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+        <span id="copyBtnText">Copy Welcome Message</span>
+      </button>
+
+      {% with wa_phone=newly_created.phone|slice:"1:" %}
+      <a href="https://wa.me/27{{ wa_phone }}?text=Welcome%20to%20Komunity!%20Your%20Field%20Ambassador%20account%20is%20ready.%20Login%20at%20{{ newly_created.quick_capture_url }}%20with%20Username:%20{{ newly_created.phone }}%20and%20Password:%20{{ newly_created.password }}" target="_blank" class="btn" style="background: #25d366; color: #fff; font-weight: 700; padding: 10px 18px; border-radius: var(--radius); text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/></svg>
+        Send via WhatsApp
+      </a>
+      {% endwith %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Main Grid Layout -->
+  <div class="ambassador-grid">
+
+    <!-- Left Column: Fast Onboarding Form -->
+    <div class="form-card">
+      <div style="margin-bottom: 20px;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--cyan); letter-spacing: 0.5px;">Account Provisioning</div>
+        <h2 style="font-size: 20px; font-weight: 800; color: #fff; margin: 6px 0 2px;">Onboard Ambassador</h2>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Creates user account, sets Field Agent group permissions, and provisions toolkit.</p>
+      </div>
+
+      <form method="post" action="{% url 'crm:ambassadors' %}">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 16px;">
+            {% for error in form.non_field_errors %}
+              <div class="error-text">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div>
+            <label class="form-label" for="{{ form.first_name.id_for_label }}">First Name *</label>
+            {{ form.first_name }}
+            {% if form.first_name.errors %}
+              <div class="error-text">{{ form.first_name.errors.0 }}</div>
+            {% endif %}
+          </div>
+          <div>
+            <label class="form-label" for="{{ form.last_name.id_for_label }}">Surname *</label>
+            {{ form.last_name }}
+            {% if form.last_name.errors %}
+              <div class="error-text">{{ form.last_name.errors.0 }}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.phone.id_for_label }}">Mobile Phone (Login Username) *</label>
+          {{ form.phone }}
+          <div class="help-text">South African format e.g. 082 123 4567 (used as login username)</div>
+          {% if form.phone.errors %}
+            <div class="error-text">{{ form.phone.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.email.id_for_label }}">Email Address (Optional)</label>
+          {{ form.email }}
+          {% if form.email.errors %}
+            <div class="error-text">{{ form.email.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.territory.id_for_label }}">Assigned Territory / Area</label>
+          {{ form.territory }}
+          <div class="help-text">e.g. Soweto, Umlazi, Khayelitsha, Mamelodi</div>
+          {% if form.territory.errors %}
+            <div class="error-text">{{ form.territory.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.campaign_source.id_for_label }}">Assigned Campaign / Channel</label>
+          {{ form.campaign_source }}
+          {% if form.campaign_source.errors %}
+            <div class="error-text">{{ form.campaign_source.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.password.id_for_label }}">Initial Password / PIN</label>
+          {{ form.password }}
+          <div class="help-text">Leave blank to auto-generate a secure memorable password.</div>
+          {% if form.password.errors %}
+            <div class="error-text">{{ form.password.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <div style="margin-bottom: 18px;">
+          <label class="form-label" for="{{ form.notes.id_for_label }}">Notes / Languages / Background</label>
+          {{ form.notes }}
+          {% if form.notes.errors %}
+            <div class="error-text">{{ form.notes.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <button type="submit" class="btn" style="width: 100%; background: linear-gradient(135deg, #005cb3, #3fd2c7); color: #fff; font-weight: 700; padding: 12px; border-radius: var(--radius); border: none; cursor: pointer; font-size: 14px; box-shadow: 0 4px 16px rgba(0, 92, 179, 0.4);">
+          ⚡ Onboard &amp; Generate Field Kit
+        </button>
+      </form>
+    </div>
+
+    <!-- Right Column: Active Ambassadors Directory -->
+    <div class="directory-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2 style="font-size: 18px; font-weight: 800; color: #fff; margin: 0;">Ambassador Roster ({{ ambassadors|length }})</h2>
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0;">Field agents currently active in the community pipeline</p>
+        </div>
+
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          <span style="color: var(--success); font-weight: 700;">● Active</span> field accounts
+        </div>
+      </div>
+
+      {% if ambassadors %}
+      <div style="overflow-x: auto;">
+        <table class="amb-table">
+          <thead>
+            <tr>
+              <th>Ambassador</th>
+              <th>Territory</th>
+              <th>Leads Captured</th>
+              <th>Assigned</th>
+              <th>Activated</th>
+              <th>Follow-up Tasks</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in ambassadors %}
+            <tr>
+              <td>
+                <div style="display: flex; align-items: center;">
+                  <div class="avatar-badge">
+                    {{ a.full_name|slice:":1"|upper }}
+                  </div>
+                  <div>
+                    <div style="font-weight: 700; color: #fff;">{{ a.full_name }}</div>
+                    <div style="font-size: 11px; color: var(--text-secondary); font-family: monospace;">{{ a.phone }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="badge-tag" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                  {{ a.territory }}
+                </span>
+              </td>
+              <td>
+                <span style="font-weight: 700; color: var(--cyan); font-size: 14px;">{{ a.leads_captured }}</span>
+              </td>
+              <td>
+                <span style="color: var(--text-primary);">{{ a.assigned_count }}</span>
+              </td>
+              <td>
+                {% if a.activated_count > 0 %}
+                  <span class="badge-tag" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-weight: 700;">
+                    ✓ {{ a.activated_count }} Active
+                  </span>
+                {% else %}
+                  <span style="color: var(--text-muted); font-size: 12px;">0</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if a.overdue_tasks > 0 %}
+                  <span class="badge-tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">
+                    ⚠ {{ a.overdue_tasks }} Overdue
+                  </span>
+                {% else %}
+                  <span style="color: var(--text-secondary); font-size: 12px;">All Clear</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'crm:lead_list' %}?owner={{ a.user.id }}" class="btn" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--cyan); padding: 5px 10px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 600; white-space: nowrap;">
+                  View Leads →
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="text-align: center; padding: 48px 20px; background: var(--bg-2); border-radius: var(--radius); border: 1px dashed var(--border);">
+        <div style="font-size: 36px; margin-bottom: 12px;">👥</div>
+        <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px;">No Field Ambassadors Onboarded Yet</h3>
+        <p style="font-size: 13px; color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">
+          Use the form on the left to register your first field ambassador and provide them with their mobile Quick Capture kit.
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Ambassador Field Standards & Playbook Card -->
+      <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--cyan); letter-spacing: 0.5px; margin-bottom: 8px;">
+          Field Ambassador Operating Standards
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div style="background: var(--bg-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 4px;">1. Mobile Setup</div>
+            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">Add Quick Capture to phone home screen for 1-tap offline-ready field access.</div>
+          </div>
+          <div style="background: var(--bg-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 4px;">2. 60-Sec Capture</div>
+            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">Capture community name, contact phone, stokvel type, and township area on the spot.</div>
+          </div>
+          <div style="background: var(--bg-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 4px;">3. POPIA Consent</div>
+            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">Always capture verbal permission to follow up before saving. Respect opt-outs.</div>
+          </div>
+          <div style="background: var(--bg-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 4px;">4. Activation Target</div>
+            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">Goal is an active Komunity group with 5+ members and activity within 14 days.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  function copyToolkitMessage() {
+    const text = document.getElementById('welcomeMessageText').innerText;
+    navigator.clipboard.writeText(text).then(function() {
+      const btnText = document.getElementById('copyBtnText');
+      btnText.innerText = '✓ Copied to Clipboard!';
+      setTimeout(function() {
+        btnText.innerText = 'Copy Welcome Message';
+      }, 3000);
+    }).catch(function(err) {
+      alert('Could not copy automatically. Please select and copy the text manually.');
+    });
+  }
+</script>
+{% endblock %}

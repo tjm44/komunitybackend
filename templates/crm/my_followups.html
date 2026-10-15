@@ -1,0 +1,201 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}My Follow-ups — Komunity CRM{% endblock %}
+{% block breadcrumb %}<a href="{% url 'crm:dashboard' %}">CRM</a> › Follow-ups{% endblock %}
+
+{% block content %}
+<div class="crm-container">
+
+  <!-- Header -->
+  <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
+    <div>
+      <h1 class="page-title" style="font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px;">
+        Follow-up Task Manager
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 13px;">
+        Track field agent agenda, demo callbacks, and document pickups.
+      </p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <a href="{% url 'crm:quick_capture' %}" class="btn" style="background: linear-gradient(135deg, #005cb3, #00458b); color: #fff; padding: 9px 16px; border-radius: var(--radius); font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+        + Quick Capture
+      </a>
+      <a href="{% url 'crm:lead_list' %}" class="btn" style="background: var(--surface-2); color: var(--text-primary); padding: 9px 14px; border-radius: var(--radius); font-weight: 600; border: 1px solid var(--border);">
+        All Leads
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    
+    <div style="background: var(--surface); border: 1px solid {% if overdue_tasks %}rgba(239,68,68,0.4){% else %}var(--border){% endif %}; border-radius: var(--radius); padding: 16px;">
+      <div style="font-size: 12px; color: {% if overdue_tasks %}var(--danger){% else %}var(--text-secondary){% endif %}; font-weight: 600; text-transform: uppercase;">Overdue Tasks</div>
+      <div style="font-size: 28px; font-weight: 800; color: {% if overdue_tasks %}#f87171{% else %}#fff{% endif %}; margin: 4px 0;">{{ overdue_tasks|length }}</div>
+      <div style="font-size: 11px; color: var(--text-dim);">Immediate action required</div>
+    </div>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;">
+      <div style="font-size: 12px; color: var(--cyan); font-weight: 600; text-transform: uppercase;">Due Today</div>
+      <div style="font-size: 28px; font-weight: 800; color: #fff; margin: 4px 0;">{{ due_today_tasks|length }}</div>
+      <div style="font-size: 11px; color: var(--text-dim);">Scheduled for today</div>
+    </div>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;">
+      <div style="font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase;">Upcoming</div>
+      <div style="font-size: 28px; font-weight: 800; color: #fff; margin: 4px 0;">{{ upcoming_tasks|length }}</div>
+      <div style="font-size: 11px; color: var(--text-dim);">Future scheduled callbacks</div>
+    </div>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;">
+      <div style="font-size: 12px; color: #10b981; font-weight: 600; text-transform: uppercase;">Completed</div>
+      <div style="font-size: 28px; font-weight: 800; color: #fff; margin: 4px 0;">{{ completed_tasks|length }}</div>
+      <div style="font-size: 11px; color: var(--text-dim);">Recently finalized tasks</div>
+    </div>
+
+  </div>
+
+  <!-- Overdue Tasks Section -->
+  {% if overdue_tasks %}
+  <div style="background: var(--surface); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; display: inline-block;"></span>
+      <h2 style="font-size: 16px; font-weight: 700; color: #f87171; margin: 0;">Overdue Tasks (Requires Action)</h2>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      {% for task in overdue_tasks %}
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 14px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <a href="{% url 'crm:lead_detail' task.lead.id %}" style="font-weight: 700; color: #fff; font-size: 15px;">
+              {{ task.lead.name }}
+            </a>
+            <span style="background: rgba(239,68,68,0.2); color: #f87171; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">OVERDUE</span>
+            <span style="font-size: 11px; color: var(--cyan); background: rgba(0,92,179,0.2); padding: 1px 6px; border-radius: 4px;">{{ task.get_task_type_display }}</span>
+          </div>
+          <div style="font-size: 13px; color: var(--text-primary); margin: 4px 0;">{{ task.title }}</div>
+          <div style="font-size: 12px; color: #f87171; font-weight: 600;">
+            Was due: {{ task.due_at|date:"d M Y, H:i" }} • Contact: {{ task.lead.primary_contact_name|default:"—" }} ({{ task.lead.phone }})
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <a href="{% url 'crm:lead_detail' task.lead.id %}" class="btn" style="background: var(--surface-2); border: 1px solid var(--border); color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;">
+            Open Lead
+          </a>
+          <form action="{% url 'crm:task_complete' task.id %}" method="post" style="margin: 0;">
+            {% csrf_token %}
+            <button type="submit" class="btn" style="background: #10b981; color: #000; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; border: none; cursor: pointer;">
+              ✓ Complete Task
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Due Today Section -->
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--cyan); display: inline-block;"></span>
+      <h2 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Due Today</h2>
+    </div>
+
+    {% if due_today_tasks %}
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      {% for task in due_today_tasks %}
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <a href="{% url 'crm:lead_detail' task.lead.id %}" style="font-weight: 700; color: #fff; font-size: 15px;">
+              {{ task.lead.name }}
+            </a>
+            <span style="font-size: 11px; color: var(--cyan); background: rgba(0,92,179,0.2); padding: 1px 6px; border-radius: 4px;">{{ task.get_task_type_display }}</span>
+          </div>
+          <div style="font-size: 13px; color: var(--text-primary); margin: 4px 0;">{{ task.title }}</div>
+          <div style="font-size: 12px; color: var(--text-dim);">
+            Due today at {{ task.due_at|date:"H:i" }} • Contact: {{ task.lead.primary_contact_name|default:"—" }} ({{ task.lead.phone }})
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <a href="{% url 'crm:lead_detail' task.lead.id %}" class="btn" style="background: var(--surface-2); border: 1px solid var(--border); color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;">
+            Open Lead
+          </a>
+          <form action="{% url 'crm:task_complete' task.id %}" method="post" style="margin: 0;">
+            {% csrf_token %}
+            <button type="submit" class="btn" style="background: var(--cyan); color: #000; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; border: none; cursor: pointer;">
+              ✓ Complete Task
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
+      No tasks scheduled for today.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Upcoming Tasks Section -->
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <h2 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Upcoming Tasks</h2>
+    </div>
+
+    {% if upcoming_tasks %}
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      {% for task in upcoming_tasks %}
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <a href="{% url 'crm:lead_detail' task.lead.id %}" style="font-weight: 600; color: #fff; font-size: 14px;">
+              {{ task.lead.name }}
+            </a>
+            <span style="font-size: 11px; color: var(--text-dim);">{{ task.get_task_type_display }}</span>
+          </div>
+          <div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">{{ task.title }}</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Due: {{ task.due_at|date:"d M Y, H:i" }}</div>
+        </div>
+        <a href="{% url 'crm:lead_detail' task.lead.id %}" class="btn" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px 12px; border-radius: 6px; font-size: 12px;">
+          View
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
+      No upcoming tasks scheduled.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recently Completed Section -->
+  {% if completed_tasks %}
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px;">
+    <h2 style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 14px;">Recently Completed</h2>
+    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+      {% for task in completed_tasks %}
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <div>
+          <span style="color: #34d399; font-weight: 600; margin-right: 6px;">✓</span>
+          <span style="color: var(--text-secondary); text-decoration: line-through;">{{ task.title }}</span>
+          <span style="color: var(--text-dim); font-size: 11px;">({{ task.lead.name }})</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim);">
+          {{ task.completed_at|date:"d M, H:i" }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

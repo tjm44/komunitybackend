@@ -1,0 +1,262 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Quick Capture (Mobile) — Komunity CRM{% endblock %}
+{% block breadcrumb %}<a href="{% url 'crm:dashboard' %}">CRM</a> › Quick Capture{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Quick Capture Form Fields - Generous touch padding and clean styling */
+  .quick-capture-card input.form-input,
+  .quick-capture-card select.form-select,
+  .quick-capture-card textarea.form-textarea,
+  #quick-capture-form input,
+  #quick-capture-form select,
+  #quick-capture-form textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 16px;
+    background: var(--bg-2, #1e293b);
+    border: 1px solid var(--border, rgba(153, 221, 255, 0.15));
+    border-radius: var(--radius-sm, 8px);
+    color: #ffffff;
+    font-size: 14px;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+    outline: none;
+    font-family: inherit;
+  }
+
+  #quick-capture-form select,
+  #quick-capture-form .form-select {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 42px;
+  }
+
+  #quick-capture-form select option {
+    background: #1e293b;
+    color: #ffffff;
+    padding: 10px;
+  }
+
+  #quick-capture-form textarea,
+  #quick-capture-form .form-textarea {
+    min-height: 88px;
+    padding: 13px 16px;
+    resize: vertical;
+  }
+
+  #quick-capture-form input:focus,
+  #quick-capture-form select:focus,
+  #quick-capture-form textarea:focus {
+    border-color: var(--cyan, #3fd2c7);
+    background: rgba(30, 41, 59, 0.95);
+    box-shadow: 0 0 0 3px rgba(63, 210, 199, 0.2);
+  }
+
+  #quick-capture-form input::placeholder,
+  #quick-capture-form textarea::placeholder {
+    color: var(--text-dim, #58b5da);
+    opacity: 0.65;
+  }
+
+  .field-group {
+    margin-bottom: 18px;
+  }
+
+  .field-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 7px;
+  }
+
+  .field-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim, #58b5da);
+    margin-top: 5px;
+  }
+
+  @media (max-width: 640px) {
+    .quick-capture-grid {
+      grid-template-columns: 1fr !important;
+      gap: 16px !important;
+    }
+    .quick-capture-card {
+      padding: 18px !important;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 620px; margin: 0 auto; padding: 10px 0;">
+
+  <!-- Card Container -->
+  <div class="quick-capture-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+    
+    <!-- Title -->
+    <div style="margin-bottom: 22px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--cyan); letter-spacing: 0.5px;">Field Acquisition</span>
+        <span style="font-size: 11px; background: rgba(59,130,246,0.15); color: #60a5fa; padding: 3px 10px; border-radius: 999px;">⚡ 1-Minute Capture</span>
+      </div>
+      <h1 style="font-size: 24px; font-weight: 800; color: #fff; margin: 8px 0 4px;">Capture New Community</h1>
+      <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Quickly register contact details, stokvel type, and follow-up intent.</p>
+    </div>
+
+    <!-- Duplicate Warning Box (Dynamic) -->
+    <div id="duplicate-warning" style="display: none; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px;">
+      <div style="font-weight: 700; color: #fbbf24; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+        <span>⚠️ Possible Duplicate Detected</span>
+      </div>
+      <div id="duplicate-list" style="font-size: 12px; color: #fff; margin-top: 6px;"></div>
+    </div>
+
+    <form method="post" action="{% url 'crm:quick_capture' %}" id="quick-capture-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px; color: #f87171; font-size: 13px;">
+        {% for err in form.non_field_errors %}
+          <div>⚠️ {{ err }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Community Name -->
+      <div class="field-group">
+        <label>
+          Community / Stokvel Name <span style="color: #ef4444;">*</span>
+        </label>
+        {{ form.name }}
+        {% if form.name.errors %}<div style="color: #ef4444; font-size: 12px; margin-top: 4px;">{{ form.name.errors.0 }}</div>{% endif %}
+      </div>
+
+      <!-- Contact Name & Phone Grid -->
+      <div class="quick-capture-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            Primary Contact Person
+          </label>
+          {{ form.primary_contact_name }}
+          <span class="field-hint">e.g. Chair / Treasurer</span>
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            Phone / WhatsApp Number
+          </label>
+          {{ form.phone }}
+          <span class="field-hint">Required for follow-up</span>
+        </div>
+      </div>
+
+      <!-- Type & Area Grid -->
+      <div class="quick-capture-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            Group Type
+          </label>
+          {{ form.community_type }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            Area / Township
+          </label>
+          {{ form.area_or_location }}
+        </div>
+      </div>
+
+      <!-- Source & Consent -->
+      <div class="quick-capture-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            Acquisition Source
+          </label>
+          {{ form.source }}
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 7px;">
+            POPIA Consent
+          </label>
+          {{ form.consent_to_contact }}
+        </div>
+      </div>
+
+      <!-- Next Follow-up Due -->
+      <div class="field-group">
+        <label>
+          Next Follow-up Due (Optional)
+        </label>
+        {{ form.next_follow_up_date }}
+        <span class="field-hint">Automatically schedules an initial task on your agenda</span>
+      </div>
+
+      <!-- Quick Note -->
+      <div class="field-group" style="margin-bottom: 24px;">
+        <label>
+          Quick Field Note / Observations
+        </label>
+        {{ form.initial_note }}
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" class="btn" style="width: 100%; background: linear-gradient(135deg, #005cb3, #00458b); color: #fff; padding: 14px; border-radius: var(--radius); font-size: 15px; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 16px rgba(0,69,139,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Save Community Lead
+      </button>
+
+      <div style="text-align: center; margin-top: 14px;">
+        <a href="{% url 'crm:lead_list' %}" style="font-size: 13px; color: var(--text-secondary);">← Back to Lead Pipeline</a>
+      </div>
+
+    </form>
+
+  </div>
+</div>
+
+<script>
+// Real-time client-side duplicate alert
+const phoneInput = document.querySelector('input[name="phone"]');
+const nameInput = document.querySelector('input[name="name"]');
+const warningBox = document.getElementById('duplicate-warning');
+const warningList = document.getElementById('duplicate-list');
+
+function triggerDupCheck() {
+  const phone = phoneInput ? phoneInput.value.trim() : '';
+  const name = nameInput ? nameInput.value.trim() : '';
+  if (phone.length < 8 && name.length < 4) {
+    warningBox.style.display = 'none';
+    return;
+  }
+
+  fetch(`{% url 'crm:duplicate_check' %}?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.count > 0) {
+        warningBox.style.display = 'block';
+        warningList.innerHTML = data.matches.map(m => `
+          <div style="margin-top: 4px;">
+            • <strong>${m.name}</strong> (${m.phone || 'No phone'}) — Status: ${m.status} (Owner: ${m.owner})
+            <a href="/dashboard/crm/leads/${m.id}/" target="_blank" style="color: var(--cyan); margin-left: 6px; text-decoration: underline;">View existing record →</a>
+          </div>
+        `).join('');
+      } else {
+        warningBox.style.display = 'none';
+      }
+    })
+    .catch(() => {});
+}
+
+if (phoneInput) phoneInput.addEventListener('blur', triggerDupCheck);
+if (nameInput) nameInput.addEventListener('blur', triggerDupCheck);
+</script>
+{% endblock %}
